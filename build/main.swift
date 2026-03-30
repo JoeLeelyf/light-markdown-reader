@@ -1,110 +1,38 @@
 import AppKit
 import WebKit
 
-// MARK: - App Delegate
+// MARK: - Window Controller (per-window state)
 
-class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
+class MarkViewWindowController: NSObject, WKNavigationDelegate, NSWindowDelegate {
     var window: NSWindow!
     var webView: WKWebView!
-    var pendingFileURL: URL?
-    var cliExportPDFPath: String? = nil
+    var messageHandler: ScriptMessageHandler!
     var pageLoaded = false
+    var state_currentFile: String?
+    var state_folderFiles: [String: URL] = [:]
+    var pendingLoad: (() -> Void)?
+    let windowId: String
 
-    func applicationDidFinishLaunching(_ notification: Notification) {
-        // Check for --export-pdf CLI flag
-        let args = CommandLine.arguments
-        if let idx = args.firstIndex(of: "--export-pdf"), idx + 1 < args.count {
-            cliExportPDFPath = args[idx + 1]
-        }
-
-        setupMenuBar()
-        setupWindow()
-
-        // Handle file opened via double-click / Open With
-        if let url = pendingFileURL {
-            pendingFileURL = nil
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                self.loadMarkdownFile(url: url)
-            }
-        }
+    init(windowId: String? = nil) {
+        self.windowId = windowId ?? UUID().uuidString
+        super.init()
     }
 
-    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        pageLoaded = true
-        // Handle CLI-driven file open + PDF export
-        if let exportPath = cliExportPDFPath {
-            let args = CommandLine.arguments
-            // Find the .md file arg (first arg that's not a flag or flag value)
-            var mdPath: String? = nil
-            if let url = pendingFileURL {
-                mdPath = url.path
-            } else {
-                var i = 1
-                while i < args.count {
-                    if args[i] == "--export-pdf" { i += 2; continue }
-                    if !args[i].hasPrefix("-") {
-                        mdPath = args[i]
-                        break
-                    }
-                    i += 1
-                }
-            }
-
-            if let mdPath = mdPath {
-                let url = URL(fileURLWithPath: mdPath)
-                self.loadMarkdownFile(url: url)
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                    self.exportPDFToFile(path: exportPath)
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
-                        NSApp.terminate(nil)
-                    }
-                }
-            } else {
-                // Export the demo content
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                    self.exportPDFToFile(path: exportPath)
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
-                        NSApp.terminate(nil)
-                    }
-                }
-            }
-            cliExportPDFPath = nil
-        }
-    }
-
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        return true
-    }
-
-    func application(_ sender: NSApplication, openFile filename: String) -> Bool {
-        let url = URL(fileURLWithPath: filename)
-        if webView != nil {
-            loadMarkdownFile(url: url)
-        } else {
-            pendingFileURL = url
-        }
-        return true
-    }
-
-    func application(_ sender: NSApplication, openFiles filenames: [String]) {
-        if let first = filenames.first {
-            let url = URL(fileURLWithPath: first)
-            if webView != nil {
-                loadMarkdownFile(url: url)
-            } else {
-                pendingFileURL = url
-            }
-        }
-    }
-
-    // MARK: - Window Setup
-
-    func setupWindow() {
+    func setupWindow(at point: NSPoint? = nil) {
         let screenFrame = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1200, height: 800)
         let windowWidth: CGFloat = min(1200, screenFrame.width * 0.75)
         let windowHeight: CGFloat = min(850, screenFrame.height * 0.85)
-        let windowX = screenFrame.origin.x + (screenFrame.width - windowWidth) / 2
-        let windowY = screenFrame.origin.y + (screenFrame.height - windowHeight) / 2
+
+        let windowX: CGFloat
+        let windowY: CGFloat
+        if let pt = point {
+            // Position near the drop point (convert screen coords)
+            windowX = pt.x - windowWidth / 2
+            windowY = pt.y - windowHeight / 2
+        } else {
+            windowX = screenFrame.origin.x + (screenFrame.width - windowWidth) / 2
+            windowY = screenFrame.origin.y + (screenFrame.height - windowHeight) / 2
+        }
 
         let windowRect = NSRect(x: windowX, y: windowY, width: windowWidth, height: windowHeight)
         window = NSWindow(
@@ -116,11 +44,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         window.title = "MarkView"
         window.minSize = NSSize(width: 600, height: 400)
         window.isReleasedWhenClosed = false
+        window.delegate = self
 
-        // WKWebView with message handler
+        // WKWebView with per-window message handler
         let config = WKWebViewConfiguration()
         let contentController = WKUserContentController()
-        contentController.add(ScriptMessageHandler.shared, name: "markview")
+        messageHandler = ScriptMessageHandler(windowController: self)
+        contentController.add(messageHandler, name: "markview")
         config.userContentController = contentController
         config.preferences.setValue(true, forKey: "developerExtrasEnabled")
 
@@ -128,10 +58,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         webView.autoresizingMask = [.width, .height]
         webView.setValue(false, forKey: "drawsBackground")
         webView.navigationDelegate = self
-        ScriptMessageHandler.shared.appDelegate = self
 
-        // We use a transparent overlay to catch drag events
-        let dragOverlay = DragOverlayView(frame: window.contentView!.bounds, appDelegate: self)
+        let dragOverlay = DragOverlayView(frame: window.contentView!.bounds, windowController: self)
         dragOverlay.autoresizingMask = [.width, .height]
 
         window.contentView!.addSubview(webView)
@@ -145,84 +73,28 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         window.makeKeyAndOrderFront(nil)
     }
 
-    // MARK: - Menu Bar
+    // MARK: - WKNavigationDelegate
 
-    func setupMenuBar() {
-        let mainMenu = NSMenu()
-
-        // App menu
-        let appMenuItem = NSMenuItem()
-        let appMenu = NSMenu()
-        appMenu.addItem(withTitle: "About MarkView", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
-        appMenu.addItem(NSMenuItem.separator())
-        appMenu.addItem(withTitle: "Quit MarkView", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
-        appMenuItem.submenu = appMenu
-        mainMenu.addItem(appMenuItem)
-
-        // File menu
-        let fileMenuItem = NSMenuItem()
-        let fileMenu = NSMenu(title: "File")
-        fileMenu.addItem(withTitle: "Open...", action: #selector(openDocument(_:)), keyEquivalent: "o")
-        fileMenu.addItem(withTitle: "Open Folder...", action: #selector(openFolder(_:)), keyEquivalent: "")
-        fileMenu.addItem(NSMenuItem.separator())
-        let exportPdfItem = NSMenuItem(title: "Export as PDF...", action: #selector(exportPDF(_:)), keyEquivalent: "e")
-        exportPdfItem.keyEquivalentModifierMask = [.command, .shift]
-        fileMenu.addItem(exportPdfItem)
-        fileMenu.addItem(withTitle: "Print...", action: #selector(printDocument(_:)), keyEquivalent: "p")
-        fileMenu.addItem(NSMenuItem.separator())
-        fileMenu.addItem(withTitle: "Close Window", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
-        fileMenuItem.submenu = fileMenu
-        mainMenu.addItem(fileMenuItem)
-
-        // Edit menu
-        let editMenuItem = NSMenuItem()
-        let editMenu = NSMenu(title: "Edit")
-        editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
-        editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
-        editMenu.addItem(NSMenuItem.separator())
-        editMenu.addItem(withTitle: "Find...", action: #selector(toggleSearch(_:)), keyEquivalent: "f")
-        editMenuItem.submenu = editMenu
-        mainMenu.addItem(editMenuItem)
-
-        // View menu
-        let viewMenuItem = NSMenuItem()
-        viewMenuItem.submenu = NSMenu(title: "View")
-        let viewMenu = viewMenuItem.submenu!
-
-        // Theme submenu
-        let themeMenuItem = NSMenuItem(title: "Theme", action: nil, keyEquivalent: "")
-        let themeSubmenu = NSMenu(title: "Theme")
-        let themes = ["Light", "Dark", "Sepia", "Nord", "Dracula", "Solarized"]
-        for theme in themes {
-            let item = NSMenuItem(title: theme, action: #selector(setTheme(_:)), keyEquivalent: "")
-            item.representedObject = theme.lowercased()
-            themeSubmenu.addItem(item)
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        pageLoaded = true
+        NSLog("Page loaded for window \(windowId)")
+        if let load = pendingLoad {
+            pendingLoad = nil
+            load()
         }
-        themeMenuItem.submenu = themeSubmenu
-        viewMenu.addItem(themeMenuItem)
-        viewMenu.addItem(NSMenuItem.separator())
-
-        viewMenu.addItem(withTitle: "Toggle Sidebar", action: #selector(toggleSidebar(_:)), keyEquivalent: "\\")
-        viewMenu.addItem(withTitle: "Toggle Source", action: #selector(toggleSource(_:)), keyEquivalent: "/")
-        viewMenu.addItem(NSMenuItem.separator())
-        viewMenu.addItem(withTitle: "Focus Mode", action: #selector(toggleFocusMode(_:)), keyEquivalent: "")
-        mainMenu.addItem(viewMenuItem)
-
-        // Window menu
-        let windowMenuItem = NSMenuItem()
-        let windowMenu = NSMenu(title: "Window")
-        windowMenu.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
-        windowMenu.addItem(withTitle: "Zoom", action: #selector(NSWindow.performZoom(_:)), keyEquivalent: "")
-        windowMenuItem.submenu = windowMenu
-        mainMenu.addItem(windowMenuItem)
-
-        NSApp.mainMenu = mainMenu
-        NSApp.windowsMenu = windowMenu
     }
 
-    // MARK: - Menu Actions
+    // MARK: - NSWindowDelegate
 
-    @objc func openDocument(_ sender: Any?) {
+    func windowWillClose(_ notification: Notification) {
+        let appDel = NSApp.delegate as? AppDelegate
+        appDel?.removeWindowController(self)
+    }
+
+    // MARK: - Menu Actions (routed from AppDelegate)
+
+    func openDocument() {
+        NSLog("openDocument called, window: \(window != nil ? "exists" : "nil")")
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [
             .init(filenameExtension: "md")!,
@@ -241,7 +113,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         }
     }
 
-    @objc func openFolder(_ sender: Any?) {
+    func openFolder() {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
@@ -266,50 +138,57 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
 
         guard !mdFiles.isEmpty else { return }
 
-        // Store file URL mapping for later lookup
         state_folderFiles = Dictionary(uniqueKeysWithValues: mdFiles.map { ($0.lastPathComponent, $0) })
 
-        // Build filenames JSON array
         let names = mdFiles.map { $0.lastPathComponent }
         let namesJSON = names.map { "\"\(escapeJSString($0))\"" }.joined(separator: ",")
 
-        // Read first file content
         let firstFile = mdFiles[0]
         loadMarkdownFile(url: firstFile)
 
-        // Send file list to JS for sidebar display
         let js = "receiveFilesFromApp([\(namesJSON)])"
         webView.evaluateJavaScript(js, completionHandler: nil)
     }
 
-    @objc func setTheme(_ sender: NSMenuItem) {
-        guard let themeName = sender.representedObject as? String else { return }
+    func setTheme(_ themeName: String) {
         webView.evaluateJavaScript("setTheme('\(themeName)')", completionHandler: nil)
     }
 
-    @objc func toggleSidebar(_ sender: Any?) {
+    func toggleSidebar() {
         webView.evaluateJavaScript("document.getElementById('btnSidebar').click()", completionHandler: nil)
     }
 
-    @objc func toggleSource(_ sender: Any?) {
+    func toggleSource() {
         webView.evaluateJavaScript("toggleSourceMode()", completionHandler: nil)
     }
 
-    @objc func toggleFocusMode(_ sender: Any?) {
+    func toggleFocusMode() {
         webView.evaluateJavaScript("document.getElementById('btnFocus').click()", completionHandler: nil)
     }
 
-    @objc func toggleSearch(_ sender: Any?) {
+    func toggleSearch() {
         webView.evaluateJavaScript("document.getElementById('btnSearch').click()", completionHandler: nil)
     }
+
+    func closeActiveTab() {
+        webView.evaluateJavaScript("closeTab(state.activeTabId)", completionHandler: nil)
+    }
+
+    func toggleSplitView() {
+        webView.evaluateJavaScript("if(typeof toggleSplitView==='function')toggleSplitView('vertical')", completionHandler: nil)
+    }
+
+    func closeSplitView() {
+        webView.evaluateJavaScript("if(typeof closeSplitView==='function')closeSplitView()", completionHandler: nil)
+    }
+
+    // MARK: - PDF
 
     // A4 dimensions in points (72 dpi)
     static let a4Width: CGFloat = 595.28
     static let a4Height: CGFloat = 841.89
-    static let a4Margin: CGFloat = 40.0
-    static let a4ContentWidth: CGFloat = a4Width - a4Margin * 2
 
-    @objc func exportPDF(_ sender: Any?) {
+    func exportPDF() {
         let panel = NSSavePanel()
         let defaultName = (state_currentFile ?? "export").replacingOccurrences(of: "\\.[^.]+$", with: "", options: .regularExpression)
         panel.nameFieldStringValue = defaultName + ".pdf"
@@ -334,22 +213,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         }
     }
 
-    /// Generate a paginated A4 PDF from the current web content
     func generatePaginatedPDF(completion: @escaping (Data?) -> Void) {
-        // Step 1: Enter PDF export mode and resize web view to A4 content width
         let enterJS = "document.body.classList.add('pdf-export-mode')"
         webView.evaluateJavaScript(enterJS) { _, _ in
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                // Step 2: Get full single-page PDF (no rect = full content height)
                 let pdfConfig = WKPDFConfiguration()
                 self.webView.createPDF(configuration: pdfConfig) { pdfResult in
-                    // Restore UI
                     let exitJS = "document.body.classList.remove('pdf-export-mode')"
                     self.webView.evaluateJavaScript(exitJS, completionHandler: nil)
 
                     switch pdfResult {
                     case .success(let singlePageData):
-                        // Step 3: Split the single long page into A4-sized pages
                         let paginated = self.paginatePDF(data: singlePageData)
                         completion(paginated)
                     case .failure(let error):
@@ -366,7 +240,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         }
     }
 
-    /// Slice a single tall PDF page into A4-sized pages
     func paginatePDF(data: Data) -> Data? {
         guard let provider = CGDataProvider(data: data as CFData),
               let sourcePDF = CGPDFDocument(provider),
@@ -375,19 +248,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         let sourceRect = sourcePage.getBoxRect(.mediaBox)
         let sourceWidth = sourceRect.width
         let sourceHeight = sourceRect.height
-        let pageHeight = AppDelegate.a4Height
-        let pageWidth = AppDelegate.a4Width
+        let pageHeight = MarkViewWindowController.a4Height
+        let pageWidth = MarkViewWindowController.a4Width
 
-        // Scale factor: fit source width into A4 width
         let scale = pageWidth / sourceWidth
         let scaledHeight = sourceHeight * scale
 
-        // How many pages do we need?
-        let contentPageHeight = pageHeight  // full A4 height per page
+        let contentPageHeight = pageHeight
         let pageCount = max(1, Int(ceil(scaledHeight / contentPageHeight)))
 
         if pageCount == 1 {
-            // Content fits on one page, return as-is but at A4 size
             let pdfData = NSMutableData()
             guard let consumer = CGDataConsumer(data: pdfData),
                   let context = CGContext(consumer: consumer, mediaBox: nil, nil) else { return nil }
@@ -408,14 +278,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         for i in 0..<pageCount {
             var mediaBox = CGRect(x: 0, y: 0, width: pageWidth, height: pageHeight)
             context.beginPage(mediaBox: &mediaBox)
-
-            // Save state, clip to page bounds
             context.saveGState()
             context.clip(to: CGRect(x: 0, y: 0, width: pageWidth, height: pageHeight))
 
-            // The source PDF has origin at bottom-left.
-            // We need to show slice i: from top of content, page i starts at y = i * contentPageHeight
-            // In PDF coordinates (bottom-left origin), we translate so the correct slice is visible.
             let yOffset = scaledHeight - CGFloat(i + 1) * contentPageHeight
             context.translateBy(x: 0, y: -yOffset)
             context.scaleBy(x: scale, y: scale)
@@ -429,11 +294,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         return pdfData as Data
     }
 
-    @objc func printDocument(_ sender: Any?) {
+    func printDocument() {
         webView.evaluateJavaScript("window.print()", completionHandler: nil)
     }
 
-    /// Export PDF directly to a file path (for testing / CLI usage)
     func exportPDFToFile(path: String) {
         let url = URL(fileURLWithPath: path)
         generatePaginatedPDF { data in
@@ -448,22 +312,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         }
     }
 
-    // Track current file name for export default filename
-    var state_currentFile: String? = nil
-    // Track files in the currently opened folder (filename -> full URL)
-    var state_folderFiles: [String: URL] = [:]
-
     // MARK: - Load Markdown File
 
     func loadMarkdownFile(url: URL) {
+        NSLog("loadMarkdownFile: \(url.path), pageLoaded=\(pageLoaded)")
         do {
             let content = try String(contentsOf: url, encoding: .utf8)
             let filename = url.lastPathComponent
-            let filePath = url.path // Full path for reading progress key
+            let filePath = url.path
             state_currentFile = filename
             window.title = "\(filename) - MarkView"
 
-            // Escape for JavaScript string
             let escaped = content
                 .replacingOccurrences(of: "\\", with: "\\\\")
                 .replacingOccurrences(of: "\"", with: "\\\"")
@@ -472,9 +331,20 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
                 .replacingOccurrences(of: "\t", with: "\\t")
 
             let js = "loadMarkdownFromApp(\"\(escapeJSString(filename))\", \"\(escaped)\", \"\(escapeJSString(filePath))\")"
-            webView.evaluateJavaScript(js) { _, error in
-                if let error = error {
-                    NSLog("JS Error: \(error.localizedDescription)")
+
+            if pageLoaded {
+                webView.evaluateJavaScript(js) { _, error in
+                    if let error = error {
+                        NSLog("JS Error: \(error.localizedDescription)")
+                    }
+                }
+            } else {
+                pendingLoad = { [weak self] in
+                    self?.webView.evaluateJavaScript(js) { _, error in
+                        if let error = error {
+                            NSLog("JS Error: \(error.localizedDescription)")
+                        }
+                    }
                 }
             }
         } catch {
@@ -495,32 +365,58 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
     }
 }
 
-// MARK: - Script Message Handler
+// MARK: - Script Message Handler (per-window)
 
 class ScriptMessageHandler: NSObject, WKScriptMessageHandler {
-    static let shared = ScriptMessageHandler()
-    weak var appDelegate: AppDelegate?
+    weak var windowController: MarkViewWindowController?
+
+    init(windowController: MarkViewWindowController) {
+        self.windowController = windowController
+        super.init()
+    }
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         guard let body = message.body as? [String: Any],
               let action = body["action"] as? String else { return }
 
+        NSLog("ScriptMessageHandler received action: \(action), windowController is \(windowController == nil ? "nil" : "alive")")
+
         switch action {
         case "updateTitle":
             if let title = body["title"] as? String {
-                appDelegate?.window.title = title
+                windowController?.window.title = title
             }
         case "openFile":
-            appDelegate?.openDocument(nil)
+            windowController?.openDocument()
         case "openFolder":
-            appDelegate?.openFolder(nil)
+            windowController?.openFolder()
         case "openFileByName":
             if let name = body["filename"] as? String,
-               let url = appDelegate?.state_folderFiles[name] {
-                appDelegate?.loadMarkdownFile(url: url)
+               let url = windowController?.state_folderFiles[name] {
+                windowController?.loadMarkdownFile(url: url)
             }
         case "exportPDF":
-            appDelegate?.exportPDF(nil)
+            windowController?.exportPDF()
+        case "detachTab":
+            // Tab dragged out — create new window with this tab's content
+            if let filename = body["filename"] as? String,
+               let filePath = body["filePath"] as? String,
+               let rawContent = body["rawContent"] as? String,
+               let screenX = body["screenX"] as? Double,
+               let screenY = body["screenY"] as? Double {
+                let appDel = NSApp.delegate as? AppDelegate
+                // Convert screen coordinates (JS screenY has 0 at top, macOS has 0 at bottom)
+                let screenHeight = NSScreen.main?.frame.height ?? 900
+                let macY = screenHeight - CGFloat(screenY)
+                let pt = NSPoint(x: CGFloat(screenX), y: macY)
+                appDel?.createNewWindow(withFilename: filename, filePath: filePath, rawContent: rawContent, at: pt)
+            }
+        case "themeChanged":
+            // Broadcast theme to all other windows
+            if let theme = body["theme"] as? String {
+                let appDel = NSApp.delegate as? AppDelegate
+                appDel?.broadcastTheme(theme, except: windowController)
+            }
         default:
             break
         }
@@ -530,10 +426,10 @@ class ScriptMessageHandler: NSObject, WKScriptMessageHandler {
 // MARK: - Drag Overlay View (handles file drops)
 
 class DragOverlayView: NSView {
-    weak var appDelegate: AppDelegate?
+    weak var windowController: MarkViewWindowController?
 
-    init(frame: NSRect, appDelegate: AppDelegate) {
-        self.appDelegate = appDelegate
+    init(frame: NSRect, windowController: MarkViewWindowController) {
+        self.windowController = windowController
         super.init(frame: frame)
         registerForDraggedTypes([.fileURL])
     }
@@ -542,12 +438,10 @@ class DragOverlayView: NSView {
         super.init(coder: coder)
     }
 
-    // Pass all mouse/keyboard events through to the web view
     override func hitTest(_ point: NSPoint) -> NSView? {
         return nil
     }
 
-    // But still handle drag operations
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
         if hasMdFile(sender) {
             return .copy
@@ -562,7 +456,7 @@ class DragOverlayView: NSView {
                let url = URL(string: urlString) {
                 let ext = url.pathExtension.lowercased()
                 if ["md", "markdown", "mdown", "mkd", "mkdn", "mdx", "txt"].contains(ext) {
-                    appDelegate?.loadMarkdownFile(url: url)
+                    windowController?.loadMarkdownFile(url: url)
                     return true
                 }
             }
@@ -582,6 +476,293 @@ class DragOverlayView: NSView {
             }
         }
         return false
+    }
+}
+
+// MARK: - App Delegate
+
+class AppDelegate: NSObject, NSApplicationDelegate {
+    var windowControllers: [MarkViewWindowController] = []
+    var pendingFileURL: URL?
+    var cliExportPDFPath: String? = nil
+
+    var activeWindowController: MarkViewWindowController? {
+        if let keyWindow = NSApp.keyWindow {
+            return windowControllers.first { $0.window === keyWindow }
+        }
+        return windowControllers.first
+    }
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        // Check for --export-pdf CLI flag
+        let args = CommandLine.arguments
+        if let idx = args.firstIndex(of: "--export-pdf"), idx + 1 < args.count {
+            cliExportPDFPath = args[idx + 1]
+        }
+
+        setupMenuBar()
+
+        let wc = createWindowController()
+        wc.setupWindow()
+
+        // Handle file opened via double-click / Open With (before launch)
+        if let url = pendingFileURL {
+            pendingFileURL = nil
+            wc.pendingLoad = { wc.loadMarkdownFile(url: url) }
+        }
+
+        // Handle CLI mode
+        if let exportPath = cliExportPDFPath {
+            let cliArgs = CommandLine.arguments
+            var mdPath: String? = nil
+            var i = 1
+            while i < cliArgs.count {
+                if cliArgs[i] == "--export-pdf" { i += 2; continue }
+                if !cliArgs[i].hasPrefix("-") {
+                    mdPath = cliArgs[i]
+                    break
+                }
+                i += 1
+            }
+
+            let capturedMdPath = mdPath
+            let capturedExportPath = exportPath
+
+            wc.pendingLoad = {
+                if let path = capturedMdPath {
+                    let url = URL(fileURLWithPath: path)
+                    wc.loadMarkdownFile(url: url)
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    wc.exportPDFToFile(path: capturedExportPath)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+                        NSApp.terminate(nil)
+                    }
+                }
+            }
+            cliExportPDFPath = nil
+        }
+    }
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        return true
+    }
+
+    func application(_ sender: NSApplication, openFile filename: String) -> Bool {
+        NSLog("application openFile: \(filename)")
+        let url = URL(fileURLWithPath: filename)
+        if let wc = activeWindowController, wc.pageLoaded {
+            wc.loadMarkdownFile(url: url)
+        } else if let wc = windowControllers.first {
+            wc.pendingLoad = { wc.loadMarkdownFile(url: url) }
+        } else {
+            pendingFileURL = url
+        }
+        return true
+    }
+
+    func application(_ sender: NSApplication, openFiles filenames: [String]) {
+        NSLog("application openFiles: \(filenames)")
+        for filename in filenames {
+            let url = URL(fileURLWithPath: filename)
+            NSLog("  openFiles: activeWC=\(activeWindowController != nil), pageLoaded=\(activeWindowController?.pageLoaded ?? false), wc.count=\(windowControllers.count)")
+            if let wc = activeWindowController, wc.pageLoaded {
+                wc.loadMarkdownFile(url: url)
+            } else if let wc = windowControllers.first {
+                NSLog("  openFiles: setting pendingLoad for \(url.path)")
+                let capturedURL = url
+                wc.pendingLoad = { wc.loadMarkdownFile(url: capturedURL) }
+            } else {
+                NSLog("  openFiles: no window controllers, setting pendingFileURL")
+                pendingFileURL = url
+            }
+        }
+    }
+
+    // MARK: - Window Management
+
+    @discardableResult
+    func createWindowController() -> MarkViewWindowController {
+        let wc = MarkViewWindowController()
+        windowControllers.append(wc)
+        return wc
+    }
+
+    func removeWindowController(_ wc: MarkViewWindowController) {
+        windowControllers.removeAll { $0 === wc }
+    }
+
+    func createNewWindow(withFilename filename: String, filePath: String, rawContent: String, at point: NSPoint?) {
+        let wc = createWindowController()
+        wc.setupWindow(at: point)
+
+        let escapedContent = rawContent
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+            .replacingOccurrences(of: "\n", with: "\\n")
+            .replacingOccurrences(of: "\r", with: "\\r")
+            .replacingOccurrences(of: "\t", with: "\\t")
+        let escapedFilename = wc.escapeJSString(filename)
+        let escapedFilePath = wc.escapeJSString(filePath)
+
+        wc.state_currentFile = filename
+        wc.window.title = "\(filename) - MarkView"
+
+        wc.pendingLoad = {
+            let js = "loadMarkdownFromApp(\"\(escapedFilename)\", \"\(escapedContent)\", \"\(escapedFilePath)\")"
+            wc.webView.evaluateJavaScript(js) { _, error in
+                if let error = error {
+                    NSLog("JS Error loading detached tab: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+
+    func broadcastTheme(_ theme: String, except sender: MarkViewWindowController?) {
+        for wc in windowControllers {
+            if wc !== sender {
+                wc.setTheme(theme)
+            }
+        }
+    }
+
+    // MARK: - Menu Bar
+
+    func setupMenuBar() {
+        let mainMenu = NSMenu()
+
+        // App menu
+        let appMenuItem = NSMenuItem()
+        let appMenu = NSMenu()
+        appMenu.addItem(withTitle: "About MarkView", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        appMenu.addItem(NSMenuItem.separator())
+        appMenu.addItem(withTitle: "Quit MarkView", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appMenuItem.submenu = appMenu
+        mainMenu.addItem(appMenuItem)
+
+        // File menu
+        let fileMenuItem = NSMenuItem()
+        let fileMenu = NSMenu(title: "File")
+        fileMenu.addItem(withTitle: "Open...", action: #selector(menuOpenDocument(_:)), keyEquivalent: "o")
+        fileMenu.addItem(withTitle: "Open Folder...", action: #selector(menuOpenFolder(_:)), keyEquivalent: "")
+        fileMenu.addItem(NSMenuItem.separator())
+        let exportPdfItem = NSMenuItem(title: "Export as PDF...", action: #selector(menuExportPDF(_:)), keyEquivalent: "e")
+        exportPdfItem.keyEquivalentModifierMask = [.command, .shift]
+        fileMenu.addItem(exportPdfItem)
+        fileMenu.addItem(withTitle: "Print...", action: #selector(menuPrintDocument(_:)), keyEquivalent: "p")
+        fileMenu.addItem(NSMenuItem.separator())
+        fileMenu.addItem(withTitle: "Close Tab", action: #selector(menuCloseTab(_:)), keyEquivalent: "w")
+        let closeWindowItem = NSMenuItem(title: "Close Window", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        closeWindowItem.keyEquivalentModifierMask = [.command, .shift]
+        fileMenu.addItem(closeWindowItem)
+        fileMenuItem.submenu = fileMenu
+        mainMenu.addItem(fileMenuItem)
+
+        // Edit menu
+        let editMenuItem = NSMenuItem()
+        let editMenu = NSMenu(title: "Edit")
+        editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        editMenu.addItem(NSMenuItem.separator())
+        editMenu.addItem(withTitle: "Find...", action: #selector(menuToggleSearch(_:)), keyEquivalent: "f")
+        editMenuItem.submenu = editMenu
+        mainMenu.addItem(editMenuItem)
+
+        // View menu
+        let viewMenuItem = NSMenuItem()
+        viewMenuItem.submenu = NSMenu(title: "View")
+        let viewMenu = viewMenuItem.submenu!
+
+        let themeMenuItem = NSMenuItem(title: "Theme", action: nil, keyEquivalent: "")
+        let themeSubmenu = NSMenu(title: "Theme")
+        let themes = ["Light", "Dark", "Sepia", "Nord", "Dracula", "Solarized"]
+        for theme in themes {
+            let item = NSMenuItem(title: theme, action: #selector(menuSetTheme(_:)), keyEquivalent: "")
+            item.representedObject = theme.lowercased()
+            themeSubmenu.addItem(item)
+        }
+        themeMenuItem.submenu = themeSubmenu
+        viewMenu.addItem(themeMenuItem)
+        viewMenu.addItem(NSMenuItem.separator())
+
+        viewMenu.addItem(withTitle: "Toggle Sidebar", action: #selector(menuToggleSidebar(_:)), keyEquivalent: "\\")
+        viewMenu.addItem(withTitle: "Toggle Source", action: #selector(menuToggleSource(_:)), keyEquivalent: "/")
+        viewMenu.addItem(NSMenuItem.separator())
+        viewMenu.addItem(withTitle: "Split Right", action: #selector(menuSplitView(_:)), keyEquivalent: "")
+        viewMenu.addItem(withTitle: "Close Split", action: #selector(menuCloseSplit(_:)), keyEquivalent: "")
+        viewMenu.addItem(NSMenuItem.separator())
+        viewMenu.addItem(withTitle: "Focus Mode", action: #selector(menuToggleFocusMode(_:)), keyEquivalent: "")
+        mainMenu.addItem(viewMenuItem)
+
+        // Window menu
+        let windowMenuItem = NSMenuItem()
+        let windowMenu = NSMenu(title: "Window")
+        windowMenu.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
+        windowMenu.addItem(withTitle: "Zoom", action: #selector(NSWindow.performZoom(_:)), keyEquivalent: "")
+        windowMenu.addItem(NSMenuItem.separator())
+        windowMenu.addItem(withTitle: "New Window", action: #selector(menuNewWindow(_:)), keyEquivalent: "n")
+        windowMenuItem.submenu = windowMenu
+        mainMenu.addItem(windowMenuItem)
+
+        NSApp.mainMenu = mainMenu
+        NSApp.windowsMenu = windowMenu
+    }
+
+    // MARK: - Menu Action Routing
+
+    @objc func menuOpenDocument(_ sender: Any?) {
+        NSLog("menuOpenDocument called, activeWindowController: \(activeWindowController != nil ? "exists" : "nil")")
+        activeWindowController?.openDocument()
+    }
+
+    @objc func menuOpenFolder(_ sender: Any?) {
+        activeWindowController?.openFolder()
+    }
+
+    @objc func menuExportPDF(_ sender: Any?) {
+        activeWindowController?.exportPDF()
+    }
+
+    @objc func menuPrintDocument(_ sender: Any?) {
+        activeWindowController?.printDocument()
+    }
+
+    @objc func menuCloseTab(_ sender: Any?) {
+        activeWindowController?.closeActiveTab()
+    }
+
+    @objc func menuSetTheme(_ sender: NSMenuItem) {
+        guard let themeName = sender.representedObject as? String else { return }
+        activeWindowController?.setTheme(themeName)
+    }
+
+    @objc func menuToggleSidebar(_ sender: Any?) {
+        activeWindowController?.toggleSidebar()
+    }
+
+    @objc func menuToggleSource(_ sender: Any?) {
+        activeWindowController?.toggleSource()
+    }
+
+    @objc func menuToggleFocusMode(_ sender: Any?) {
+        activeWindowController?.toggleFocusMode()
+    }
+
+    @objc func menuToggleSearch(_ sender: Any?) {
+        activeWindowController?.toggleSearch()
+    }
+
+    @objc func menuSplitView(_ sender: Any?) {
+        activeWindowController?.toggleSplitView()
+    }
+
+    @objc func menuCloseSplit(_ sender: Any?) {
+        activeWindowController?.closeSplitView()
+    }
+
+    @objc func menuNewWindow(_ sender: Any?) {
+        let wc = createWindowController()
+        wc.setupWindow()
     }
 }
 

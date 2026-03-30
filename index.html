@@ -297,6 +297,132 @@ body {
 .toolbar-search input::placeholder { color: var(--text-muted); }
 .toolbar-search svg { color: var(--text-muted); width: 14px; height: 14px; flex-shrink: 0; }
 
+/* ===== Tab Bar ===== */
+.tab-bar {
+  height: 34px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: stretch;
+  flex-shrink: 0;
+  overflow: hidden;
+  -webkit-app-region: no-drag;
+}
+.tab-bar-scroll {
+  display: flex;
+  align-items: stretch;
+  overflow-x: auto;
+  overflow-y: hidden;
+  flex: 1;
+  scrollbar-width: none;
+}
+.tab-bar-scroll::-webkit-scrollbar { display: none; }
+.tab-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  border-right: 1px solid var(--border-color);
+  cursor: pointer;
+  white-space: nowrap;
+  max-width: 200px;
+  min-width: 60px;
+  position: relative;
+  user-select: none;
+  -webkit-user-select: none;
+  flex-shrink: 0;
+  transition: background var(--transition);
+}
+.tab-item:hover {
+  background: var(--bg-hover);
+}
+.tab-item.active {
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  border-bottom: 2px solid var(--accent);
+}
+.tab-item-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+}
+.tab-item-close {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+}
+.tab-item:hover .tab-item-close,
+.tab-item.active .tab-item-close { display: flex; }
+.tab-item-close:hover {
+  background: var(--bg-active);
+  color: var(--text-primary);
+}
+.tab-item.dragging { opacity: 0.5; }
+body.focus-mode .tab-bar { display: none !important; }
+body.pdf-export-mode .tab-bar { display: none !important; }
+@media print { .tab-bar { display: none !important; } }
+
+/* ===== Split View / Panes ===== */
+.panes-container {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+.pane {
+  flex: 1;
+  min-width: 200px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
+.pane .content-area {
+  flex: 1;
+  overflow-y: auto;
+}
+.pane-divider {
+  width: 4px;
+  cursor: col-resize;
+  background: var(--border-color);
+  flex-shrink: 0;
+  transition: background 0.15s;
+  z-index: 2;
+}
+.pane-divider:hover,
+.pane-divider.dragging {
+  background: var(--accent);
+}
+.pane.active-pane {
+  outline: none;
+}
+/* Show subtle indicator for active pane when split */
+.panes-container.split .pane.active-pane {
+  box-shadow: inset 0 2px 0 0 var(--accent);
+}
+body.focus-mode .pane-divider { display: none !important; }
+body.pdf-export-mode .pane-divider { display: none !important; }
+body.pdf-export-mode .pane:not(:first-child) { display: none !important; }
+@media print {
+  .pane-divider { display: none !important; }
+  .pane:not(:first-child) { display: none !important; }
+}
+
 /* ===== Main Layout ===== */
 .main-container {
   flex: 1;
@@ -799,7 +925,6 @@ body.focus-mode .content-area { height: 100vh; }
 /* ===== Native App Mode ===== */
 body.native-app .titlebar { display: none !important; }
 body.native-app .toolbar { top: 0; }
-body.native-app .main-container { top: calc(var(--toolbar-height)); height: calc(100vh - var(--toolbar-height) - 26px); }
 body.native-app #btnWelcomeOpen { display: none; }
 body.native-app .welcome-shortcut { display: none; }
 body.native-app .welcome p { margin-bottom: 0; }
@@ -900,6 +1025,10 @@ body.pdf-export-mode .markdown-body p { orphans: 3; widows: 3; }
   <button class="toolbar-btn" id="btnPrint" title="Print (⌘+P)">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
   </button>
+  <div class="toolbar-separator"></div>
+  <button class="toolbar-btn" id="btnSplit" title="Split View">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="3" x2="12" y2="21"/></svg>
+  </button>
   <div class="toolbar-spacer"></div>
   <div class="toolbar-search" id="searchBox" style="display:none;">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -919,6 +1048,11 @@ body.pdf-export-mode .markdown-body p { orphans: 3; widows: 3; }
   </button>
 </div>
 
+<!-- Tab Bar -->
+<div class="tab-bar" id="tabBar" style="display:none">
+  <div class="tab-bar-scroll" id="tabBarScroll"></div>
+</div>
+
 <!-- Main -->
 <main class="main-container">
   <!-- Sidebar -->
@@ -933,23 +1067,29 @@ body.pdf-export-mode .markdown-body p { orphans: 3; widows: 3; }
     </div>
   </div>
 
-  <!-- Content -->
-  <div class="content-area" id="contentArea">
-    <div class="welcome" id="welcomeScreen">
-      <svg class="welcome-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-        <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/>
-        <line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
-      </svg>
-      <h2>MarkView</h2>
-      <p>A beautiful Markdown reader inspired by Typora.<br>
-      Open a file or drag & drop to start reading.</p>
-      <div class="welcome-shortcut">
-        <kbd>⌘</kbd> + <kbd>O</kbd>&nbsp; to open file
+  <!-- Panes Container -->
+  <div class="panes-container" id="panesContainer">
+    <div class="pane active-pane" id="pane-0" data-pane-id="pane-0">
+      <!-- Content -->
+      <div class="content-area" id="contentArea">
+        <div class="welcome" id="welcomeScreen">
+          <svg class="welcome-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/>
+            <line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
+          </svg>
+          <h2>MarkView</h2>
+          <p>A beautiful Markdown reader inspired by Typora.<br>
+          Open a file or drag & drop to start reading.</p>
+          <div class="welcome-shortcut">
+            <kbd>⌘</kbd> + <kbd>O</kbd>&nbsp; to open file
+          </div>
+          <button class="welcome-btn" id="btnWelcomeOpen">Open Markdown File</button>
+        </div>
+        <div class="markdown-body" id="markdownBody" style="display:none"></div>
+        <div class="source-view" id="sourceView"><pre></pre></div>
       </div>
-      <button class="welcome-btn" id="btnWelcomeOpen">Open Markdown File</button>
     </div>
-    <div class="markdown-body" id="markdownBody" style="display:none"></div>
-    <div class="source-view" id="sourceView"><pre></pre></div>
+    <!-- Second pane added dynamically by toggleSplitView() -->
   </div>
 </main>
 
@@ -985,39 +1125,38 @@ body.pdf-export-mode .markdown-body p { orphans: 3; widows: 3; }
 
 <script>
 // ===== State =====
+let _tabIdCounter = 0;
+function generateId(prefix) { return prefix + '_' + (++_tabIdCounter) + '_' + Date.now().toString(36); }
+
 const state = {
-  currentFile: null,
-  currentFilePath: null, // Full path for native app, used as unique key for progress
-  rawContent: '',
+  tabs: [],          // {id, filename, filePath, rawContent, cachedHTML, scrollRatio, sourceMode}
+  activeTabId: null,
   sidebarVisible: true,
-  sourceMode: false,
   focusMode: false,
   files: [],
   theme: localStorage.getItem('markview-theme') || 'light',
   searchVisible: false,
+  // Split view (Phase 3)
+  panes: [{id: 'pane-0', activeTabId: null}],
+  activePaneId: 'pane-0',
 };
+
+function getTab(tabId) { return state.tabs.find(t => t.id === tabId); }
+function getActiveTab() { return getTab(state.activeTabId); }
+function getTabByFilePath(filePath) { return state.tabs.find(t => t.filePath && t.filePath === filePath); }
 
 // ===== Reading Progress Memory =====
 const ReadingProgress = {
   STORAGE_KEY: 'markview-reading-progress',
-  MAX_ENTRIES: 100, // Limit stored entries to prevent localStorage bloat
-
-  // Get all stored progress
+  MAX_ENTRIES: 100,
   getAll() {
-    try {
-      return JSON.parse(localStorage.getItem(this.STORAGE_KEY) || '{}');
-    } catch { return {}; }
+    try { return JSON.parse(localStorage.getItem(this.STORAGE_KEY) || '{}'); }
+    catch { return {}; }
   },
-
-  // Save progress for a file
   save(fileKey, scrollRatio) {
     if (!fileKey) return;
     const all = this.getAll();
-    all[fileKey] = {
-      ratio: scrollRatio,
-      timestamp: Date.now()
-    };
-    // Prune old entries if over limit
+    all[fileKey] = { ratio: scrollRatio, timestamp: Date.now() };
     const keys = Object.keys(all);
     if (keys.length > this.MAX_ENTRIES) {
       const sorted = keys.sort((a, b) => (all[a].timestamp || 0) - (all[b].timestamp || 0));
@@ -1025,18 +1164,12 @@ const ReadingProgress = {
     }
     localStorage.setItem(this.STORAGE_KEY, JSON.stringify(all));
   },
-
-  // Load progress for a file
   load(fileKey) {
     if (!fileKey) return null;
     const all = this.getAll();
     return all[fileKey]?.ratio ?? null;
   },
-
-  // Clear all progress
-  clear() {
-    localStorage.removeItem(this.STORAGE_KEY);
-  }
+  clear() { localStorage.removeItem(this.STORAGE_KEY); }
 };
 
 // ===== DOM =====
@@ -1060,10 +1193,18 @@ const dom = {
   statChars: $('#statChars'),
   statLines: $('#statLines'),
   statReadTime: $('#statReadTime'),
+  tabBar: $('#tabBar'),
+  tabBarScroll: $('#tabBarScroll'),
+  panesContainer: $('#panesContainer'),
 };
 
+// ===== Native App Detection (must be before any code that uses isNativeApp) =====
+const isNativeApp = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.markview;
+if (isNativeApp) {
+  document.body.classList.add('native-app');
+}
+
 // ===== Marked Configuration =====
-// marked v12.0.1 uses positional args: heading(text, level, raw), code(code, lang, escaped), listitem(text, task, checked)
 marked.use({
   gfm: true,
   breaks: false,
@@ -1087,7 +1228,6 @@ marked.use({
     },
     listitem(text, task, checked) {
       if (task) {
-        // marked v12 already includes checkbox in `text`; add aria-label for a11y
         const labelText = text.replace(/<[^>]+>/g, '').trim();
         const accessible = text.replace('<input', `<input aria-label="${escapeHtml(labelText)}"`);
         return `<li class="task-list-item">${accessible}</li>\n`;
@@ -1111,20 +1251,227 @@ window.copyCode = function(btn) {
   });
 };
 
+// ===== Tab System =====
+
+function addTab(filename, filePath, content) {
+  // Check if tab already exists for this file
+  if (filePath) {
+    const existing = getTabByFilePath(filePath);
+    if (existing) {
+      activateTab(existing.id);
+      return existing;
+    }
+  }
+
+  const tab = {
+    id: generateId('tab'),
+    filename: filename || 'Untitled',
+    filePath: filePath || null,
+    rawContent: content || '',
+    cachedHTML: null,
+    scrollRatio: 0,
+    sourceMode: false,
+  };
+  state.tabs.push(tab);
+  activateTab(tab.id);
+  renderTabBar();
+  return tab;
+}
+
+function closeTab(tabId) {
+  if (!tabId) tabId = state.activeTabId;
+  const idx = state.tabs.findIndex(t => t.id === tabId);
+  if (idx === -1) return;
+
+  // Save scroll position before closing
+  if (tabId === state.activeTabId) {
+    saveTabScrollPosition(tabId);
+  }
+
+  state.tabs.splice(idx, 1);
+
+  if (state.tabs.length === 0) {
+    // No tabs left — show welcome screen
+    state.activeTabId = null;
+    dom.markdownBody.innerHTML = '';
+    dom.markdownBody.style.display = 'none';
+    dom.sourceView.classList.remove('active');
+    dom.welcomeScreen.style.display = '';
+    dom.titleText.textContent = 'MarkView';
+    document.title = 'MarkView';
+    dom.outlinePanel.innerHTML = '';
+    dom.statWords.textContent = '';
+    dom.statChars.textContent = '';
+    dom.statLines.textContent = '';
+    dom.statReadTime.textContent = '';
+    updateTabBarVisibility();
+    if (isNativeApp) {
+      window.webkit.messageHandlers.markview.postMessage({ action: 'updateTitle', title: 'MarkView' });
+    }
+    return;
+  }
+
+  // Activate neighbor tab
+  if (tabId === state.activeTabId) {
+    const newIdx = Math.min(idx, state.tabs.length - 1);
+    activateTab(state.tabs[newIdx].id);
+  }
+  renderTabBar();
+}
+
+function activateTab(tabId) {
+  const tab = getTab(tabId);
+  if (!tab) return;
+
+  // Save scroll position of current tab before switching
+  if (state.activeTabId && state.activeTabId !== tabId) {
+    saveTabScrollPosition(state.activeTabId);
+  }
+
+  state.activeTabId = tabId;
+  // Update pane tracking
+  const pane = state.panes.find(p => p.id === state.activePaneId);
+  if (pane) pane.activeTabId = tabId;
+
+  // Update title
+  const title = tab.filename + ' - MarkView';
+  dom.titleText.textContent = title;
+  document.title = title;
+  if (isNativeApp) {
+    window.webkit.messageHandlers.markview.postMessage({ action: 'updateTitle', title: title });
+  }
+
+  // Render content
+  if (tab.cachedHTML) {
+    dom.markdownBody.innerHTML = tab.cachedHTML;
+    dom.markdownBody.style.display = tab.sourceMode ? 'none' : 'block';
+    dom.welcomeScreen.style.display = 'none';
+    dom.sourceView.querySelector('pre').textContent = tab.rawContent;
+    dom.sourceView.classList.toggle('active', tab.sourceMode);
+    $('#btnSource').classList.toggle('active', tab.sourceMode);
+    buildOutline();
+    updateStats(tab.rawContent);
+    setTimeout(() => restoreTabScrollPosition(tabId), 50);
+  } else if (tab.rawContent) {
+    renderMarkdown(tab.rawContent);
+  } else {
+    dom.markdownBody.innerHTML = '';
+    dom.markdownBody.style.display = 'none';
+    dom.welcomeScreen.style.display = '';
+  }
+
+  renderTabBar();
+}
+
+function renderTabBar() {
+  updateTabBarVisibility();
+  const scroll = dom.tabBarScroll;
+  scroll.innerHTML = '';
+
+  state.tabs.forEach(tab => {
+    const el = document.createElement('div');
+    el.className = 'tab-item' + (tab.id === state.activeTabId ? ' active' : '');
+    el.dataset.tabId = tab.id;
+    el.draggable = true;
+
+    const label = document.createElement('span');
+    label.className = 'tab-item-label';
+    label.textContent = tab.filename;
+    el.appendChild(label);
+
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'tab-item-close';
+    closeBtn.textContent = '\u00d7';
+    closeBtn.title = 'Close tab';
+    closeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeTab(tab.id);
+    });
+    el.appendChild(closeBtn);
+
+    el.addEventListener('click', () => {
+      if (state.activeTabId !== tab.id) activateTab(tab.id);
+    });
+
+    // Tab drag for detach
+    el.addEventListener('dragstart', (e) => {
+      e.dataTransfer.setData('text/plain', tab.id);
+      e.dataTransfer.effectAllowed = 'move';
+      el.classList.add('dragging');
+      // Store data for detach detection
+      el._dragStartX = e.screenX;
+      el._dragStartY = e.screenY;
+    });
+    el.addEventListener('dragend', (e) => {
+      el.classList.remove('dragging');
+      // Detect if dragged outside the window (for detach to new window)
+      if (state.tabs.length > 1 && isNativeApp) {
+        const rect = document.documentElement.getBoundingClientRect();
+        if (e.clientX < 0 || e.clientY < 0 || e.clientX > rect.width || e.clientY > rect.height) {
+          window.webkit.messageHandlers.markview.postMessage({
+            action: 'detachTab',
+            filename: tab.filename,
+            filePath: tab.filePath || '',
+            rawContent: tab.rawContent,
+            screenX: e.screenX,
+            screenY: e.screenY,
+          });
+          closeTab(tab.id);
+        }
+      }
+    });
+
+    scroll.appendChild(el);
+  });
+}
+
+function updateTabBarVisibility() {
+  const show = state.tabs.length > 0;
+  dom.tabBar.style.display = show ? 'flex' : 'none';
+  document.body.classList.toggle('has-tabs', show);
+}
+
+function saveTabScrollPosition(tabId) {
+  const tab = getTab(tabId);
+  if (!tab) return;
+  const maxScroll = dom.contentArea.scrollHeight - dom.contentArea.clientHeight;
+  tab.scrollRatio = maxScroll > 0 ? dom.contentArea.scrollTop / maxScroll : 0;
+  // Also save to ReadingProgress
+  if (tab.filePath) {
+    ReadingProgress.save(tab.filePath, tab.scrollRatio);
+  }
+}
+
+function restoreTabScrollPosition(tabId) {
+  const tab = getTab(tabId);
+  if (!tab) return;
+
+  // Try tab's own scroll ratio first, then ReadingProgress
+  let ratio = tab.scrollRatio;
+  if ((!ratio || ratio === 0) && tab.filePath) {
+    const saved = ReadingProgress.load(tab.filePath);
+    if (saved !== null) ratio = saved;
+  }
+
+  if (ratio > 0) {
+    const maxScroll = dom.contentArea.scrollHeight - dom.contentArea.clientHeight;
+    dom.contentArea.scrollTop = ratio * maxScroll;
+  }
+}
+
 // ===== Render Markdown =====
 function renderMarkdown(content) {
-  state.rawContent = content;
+  const tab = getActiveTab();
+  if (tab) tab.rawContent = content;
 
   // Handle math: protect LaTeX before marked processes it
   let processed = content;
   const mathBlocks = [];
-  // Block math $$...$$
   processed = processed.replace(/\$\$([\s\S]*?)\$\$/g, (match, math) => {
     const idx = mathBlocks.length;
     mathBlocks.push({ type: 'block', content: math });
     return `%%MATH_BLOCK_${idx}%%`;
   });
-  // Inline math $...$
   processed = processed.replace(/(?<![\\$])\$(?!\$)(.+?)(?<![\\$])\$/g, (match, math) => {
     const idx = mathBlocks.length;
     mathBlocks.push({ type: 'inline', content: math });
@@ -1133,7 +1480,6 @@ function renderMarkdown(content) {
 
   let html = marked.parse(processed);
 
-  // Restore math
   mathBlocks.forEach((block, idx) => {
     if (block.type === 'block') {
       try {
@@ -1156,17 +1502,26 @@ function renderMarkdown(content) {
   dom.markdownBody.style.display = 'block';
   dom.welcomeScreen.style.display = 'none';
 
+  // Cache rendered HTML on the tab
+  if (tab) tab.cachedHTML = html;
+
   // Source view
   dom.sourceView.querySelector('pre').textContent = content;
 
-  // Build outline
-  buildOutline();
+  // Apply source mode from tab
+  if (tab) {
+    dom.sourceView.classList.toggle('active', tab.sourceMode);
+    dom.markdownBody.style.display = tab.sourceMode ? 'none' : 'block';
+    $('#btnSource').classList.toggle('active', tab.sourceMode);
+  }
 
-  // Update stats
+  buildOutline();
   updateStats(content);
 
-  // Restore reading progress (called after a short delay to let layout settle)
-  setTimeout(restoreReadingProgress, 100);
+  // Restore reading progress
+  setTimeout(() => {
+    if (tab) restoreTabScrollPosition(tab.id);
+  }, 100);
 }
 
 // ===== Build Outline =====
@@ -1185,7 +1540,6 @@ function buildOutline() {
     btn.textContent = h.textContent;
     btn.addEventListener('click', () => {
       h.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      // Highlight active
       $$('.toc-item').forEach(t => t.classList.remove('active'));
       btn.classList.add('active');
     });
@@ -1197,12 +1551,10 @@ function buildOutline() {
 function updateStats(text) {
   const lines = text.split('\n').length;
   const chars = text.length;
-  // Word count: CJK characters + latin words
   const cjk = (text.match(/[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff]/g) || []).length;
   const latin = (text.match(/[a-zA-Z]+/g) || []).length;
   const words = cjk + latin;
   const readTime = Math.max(1, Math.round(words / 250));
-
   dom.statWords.textContent = `${words} words`;
   dom.statChars.textContent = `${chars} chars`;
   dom.statLines.textContent = `${lines} lines`;
@@ -1230,33 +1582,21 @@ dom.contentArea.addEventListener('scroll', () => {
   // Save reading progress (debounced)
   if (scrollSaveTimeout) clearTimeout(scrollSaveTimeout);
   scrollSaveTimeout = setTimeout(() => {
-    if (state.currentFilePath) {
+    const tab = getActiveTab();
+    if (tab) {
       const maxScroll = dom.contentArea.scrollHeight - dom.contentArea.clientHeight;
       const ratio = maxScroll > 0 ? scrollTop / maxScroll : 0;
-      ReadingProgress.save(state.currentFilePath, ratio);
+      tab.scrollRatio = ratio;
+      if (tab.filePath) ReadingProgress.save(tab.filePath, ratio);
     }
   }, 300);
 });
-
-// Restore reading progress for current file
-function restoreReadingProgress() {
-  if (!state.currentFilePath) return;
-  const savedRatio = ReadingProgress.load(state.currentFilePath);
-  if (savedRatio !== null && savedRatio > 0) {
-    const maxScroll = dom.contentArea.scrollHeight - dom.contentArea.clientHeight;
-    const targetScroll = savedRatio * maxScroll;
-    dom.contentArea.scrollTop = targetScroll;
-  }
-}
 
 // ===== File Handling =====
 function openFile(file) {
   const reader = new FileReader();
   reader.onload = (e) => {
-    state.currentFile = file.name;
-    dom.titleText.textContent = file.name + ' - MarkView';
-    document.title = file.name + ' - MarkView';
-    renderMarkdown(e.target.result);
+    addTab(file.name, null, e.target.result);
   };
   reader.readAsText(file);
 }
@@ -1274,13 +1614,11 @@ dom.folderInput.addEventListener('change', (e) => {
   state.files = files;
   renderFileList(files);
 
-  // Switch to files tab
   $$('.sidebar-tab').forEach(t => t.classList.remove('active'));
   $$('.sidebar-tab')[1].classList.add('active');
   dom.outlinePanel.style.display = 'none';
   dom.filesPanel.style.display = 'block';
 
-  // Open first file
   if (files.length > 0) openFile(files[0]);
   e.target.value = '';
 });
@@ -1306,11 +1644,14 @@ function renderFileList(files) {
 // ===== Drag & Drop =====
 let dragCounter = 0;
 document.addEventListener('dragenter', (e) => {
+  // Ignore internal tab drags
+  if (e.dataTransfer.types.includes('text/plain')) return;
   e.preventDefault();
   dragCounter++;
   dom.dropzone.classList.add('active');
 });
 document.addEventListener('dragleave', (e) => {
+  if (e.dataTransfer.types.includes('text/plain')) return;
   e.preventDefault();
   dragCounter--;
   if (dragCounter <= 0) {
@@ -1362,15 +1703,17 @@ $('#btnSidebar').addEventListener('click', () => {
 $('#btnSource').addEventListener('click', toggleSourceMode);
 
 function toggleSourceMode() {
-  state.sourceMode = !state.sourceMode;
-  dom.sourceView.classList.toggle('active', state.sourceMode);
-  dom.markdownBody.style.display = state.sourceMode ? 'none' : 'block';
-  $('#btnSource').classList.toggle('active', state.sourceMode);
+  const tab = getActiveTab();
+  if (tab) {
+    tab.sourceMode = !tab.sourceMode;
+    dom.sourceView.classList.toggle('active', tab.sourceMode);
+    dom.markdownBody.style.display = tab.sourceMode ? 'none' : 'block';
+    $('#btnSource').classList.toggle('active', tab.sourceMode);
+  }
 }
 
 $('#btnTheme').addEventListener('click', cycleTheme);
 
-// Available themes
 const THEMES = ['light', 'dark', 'sepia', 'nord', 'dracula', 'solarized'];
 const DARK_THEMES = ['dark', 'nord', 'dracula'];
 
@@ -1391,15 +1734,15 @@ function setTheme(themeName) {
 function applyTheme() {
   document.documentElement.dataset.theme = state.theme;
   localStorage.setItem('markview-theme', state.theme);
-
-  // Update theme icon
   const isDark = DARK_THEMES.includes(state.theme);
   $('#iconSun').style.display = isDark ? 'none' : 'block';
   $('#iconMoon').style.display = isDark ? 'block' : 'none';
-
-  // Update code highlighting theme
   $('#hljs-light').disabled = isDark;
   $('#hljs-dark').disabled = !isDark;
+  // Notify Swift for cross-window theme sync
+  if (isNativeApp) {
+    window.webkit.messageHandlers.markview.postMessage({ action: 'themeChanged', theme: state.theme });
+  }
 }
 
 $('#btnFocus').addEventListener('click', () => {
@@ -1417,10 +1760,7 @@ $('#btnSearch').addEventListener('click', () => {
 
 dom.searchInput.addEventListener('input', (e) => {
   const query = e.target.value.trim();
-  if (!query) {
-    clearHighlight();
-    return;
-  }
+  if (!query) { clearHighlight(); return; }
   highlightSearch(query);
 });
 
@@ -1430,7 +1770,6 @@ function highlightSearch(query) {
   const walker = document.createTreeWalker(dom.markdownBody, NodeFilter.SHOW_TEXT);
   const nodes = [];
   while (walker.nextNode()) nodes.push(walker.currentNode);
-
   const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
   nodes.forEach(node => {
     if (regex.test(node.textContent)) {
@@ -1450,14 +1789,14 @@ function clearHighlight() {
 }
 
 $('#btnExport').addEventListener('click', () => {
-  if (!state.rawContent) return;
-  // In native app mode, trigger native PDF export
+  const tab = getActiveTab();
+  if (!tab || !tab.rawContent) return;
   if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.markview) {
     window.webkit.messageHandlers.markview.postMessage({ action: 'exportPDF' });
     return;
   }
   const html = `<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><title>${state.currentFile || 'export'}</title>
+<html><head><meta charset="UTF-8"><title>${tab.filename || 'export'}</title>
 <style>
 body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;max-width:860px;margin:40px auto;padding:0 20px;line-height:1.75;color:#1a1a1a;}
 h1,h2{border-bottom:1px solid #eee;padding-bottom:0.3em;}
@@ -1473,7 +1812,7 @@ img{max-width:100%;}
   const blob = new Blob([html], { type: 'text/html' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = (state.currentFile || 'export').replace(/\.[^.]+$/, '') + '.html';
+  a.download = (tab.filename || 'export').replace(/\.[^.]+$/, '') + '.html';
   a.click();
   URL.revokeObjectURL(a.href);
 });
@@ -1491,14 +1830,237 @@ $$('.sidebar-tab').forEach(tab => {
   });
 });
 
+// ===== Split View =====
+$('#btnSplit').addEventListener('click', () => toggleSplitView('vertical'));
+
+function toggleSplitView(direction) {
+  const container = dom.panesContainer;
+  if (container.classList.contains('split')) {
+    closeSplitView();
+    return;
+  }
+
+  // Create second pane
+  const paneId = generateId('pane');
+  state.panes.push({ id: paneId, activeTabId: null });
+
+  const paneEl = document.createElement('div');
+  paneEl.className = 'pane';
+  paneEl.id = paneId;
+  paneEl.dataset.paneId = paneId;
+
+  // Create content area structure for the new pane
+  const contentArea = document.createElement('div');
+  contentArea.className = 'content-area';
+
+  const welcome = document.createElement('div');
+  welcome.className = 'welcome';
+  welcome.innerHTML = '<h2>Split Pane</h2><p>Click a tab to display it here, or open a new file.</p>';
+  contentArea.appendChild(welcome);
+
+  const mdBody = document.createElement('div');
+  mdBody.className = 'markdown-body';
+  mdBody.style.display = 'none';
+  contentArea.appendChild(mdBody);
+
+  const srcView = document.createElement('div');
+  srcView.className = 'source-view';
+  srcView.innerHTML = '<pre></pre>';
+  contentArea.appendChild(srcView);
+
+  paneEl.appendChild(contentArea);
+
+  // Create divider
+  const divider = document.createElement('div');
+  divider.className = 'pane-divider';
+  initPaneDividerDrag(divider);
+
+  container.appendChild(divider);
+  container.appendChild(paneEl);
+  container.classList.add('split');
+  $('#btnSplit').classList.add('active');
+
+  // Click handler for pane focus
+  paneEl.addEventListener('mousedown', () => setActivePane(paneId));
+
+  // If there's a second tab, display it in the new pane
+  if (state.tabs.length > 1) {
+    const currentTabId = state.activeTabId;
+    const otherTab = state.tabs.find(t => t.id !== currentTabId);
+    if (otherTab) {
+      renderTabInPane(otherTab, paneEl);
+      state.panes[state.panes.length - 1].activeTabId = otherTab.id;
+    }
+  }
+}
+
+function closeSplitView() {
+  const container = dom.panesContainer;
+  // Remove all panes except the first
+  const dividers = container.querySelectorAll('.pane-divider');
+  dividers.forEach(d => d.remove());
+  const panes = container.querySelectorAll('.pane');
+  panes.forEach((p, i) => { if (i > 0) p.remove(); });
+
+  container.classList.remove('split');
+  state.panes = [state.panes[0]];
+  state.activePaneId = state.panes[0].id;
+  $('#btnSplit').classList.remove('active');
+
+  // Ensure the first pane is active
+  const firstPane = container.querySelector('.pane');
+  if (firstPane) firstPane.classList.add('active-pane');
+}
+
+function setActivePane(paneId) {
+  state.activePaneId = paneId;
+  const container = dom.panesContainer;
+  container.querySelectorAll('.pane').forEach(p => {
+    p.classList.toggle('active-pane', p.dataset.paneId === paneId);
+  });
+  // Update outline for the active pane's content
+  const pane = state.panes.find(p => p.id === paneId);
+  if (pane && pane.activeTabId) {
+    const tab = getTab(pane.activeTabId);
+    if (tab) {
+      state.activeTabId = tab.id;
+      renderTabBar();
+      // Rebuild outline from the active pane's markdown body
+      const paneEl = document.getElementById(paneId);
+      if (paneEl) {
+        const mdBody = paneEl.querySelector('.markdown-body');
+        if (mdBody) {
+          buildOutlineFromElement(mdBody);
+        }
+      }
+    }
+  }
+}
+
+function renderTabInPane(tab, paneEl) {
+  const contentArea = paneEl.querySelector('.content-area');
+  const mdBody = paneEl.querySelector('.markdown-body');
+  const srcView = paneEl.querySelector('.source-view');
+  const welcome = paneEl.querySelector('.welcome');
+
+  if (tab.cachedHTML) {
+    mdBody.innerHTML = tab.cachedHTML;
+    mdBody.style.display = 'block';
+    if (welcome) welcome.style.display = 'none';
+  } else if (tab.rawContent) {
+    // Quick render for the split pane
+    mdBody.innerHTML = renderMarkdownToHTML(tab.rawContent);
+    tab.cachedHTML = mdBody.innerHTML;
+    mdBody.style.display = 'block';
+    if (welcome) welcome.style.display = 'none';
+  }
+  srcView.querySelector('pre').textContent = tab.rawContent || '';
+  srcView.classList.toggle('active', tab.sourceMode);
+  mdBody.style.display = tab.sourceMode ? 'none' : 'block';
+}
+
+function renderMarkdownToHTML(content) {
+  let processed = content;
+  const mathBlocks = [];
+  processed = processed.replace(/\$\$([\s\S]*?)\$\$/g, (match, math) => {
+    const idx = mathBlocks.length;
+    mathBlocks.push({ type: 'block', content: math });
+    return `%%MATH_BLOCK_${idx}%%`;
+  });
+  processed = processed.replace(/(?<![\\$])\$(?!\$)(.+?)(?<![\\$])\$/g, (match, math) => {
+    const idx = mathBlocks.length;
+    mathBlocks.push({ type: 'inline', content: math });
+    return `%%MATH_INLINE_${idx}%%`;
+  });
+  let html = marked.parse(processed);
+  mathBlocks.forEach((block, idx) => {
+    if (block.type === 'block') {
+      try {
+        const rendered = katex.renderToString(block.content.trim(), { displayMode: true, throwOnError: false });
+        html = html.replace(`%%MATH_BLOCK_${idx}%%`, rendered);
+      } catch(e) {
+        html = html.replace(`%%MATH_BLOCK_${idx}%%`, `<pre class="math-error">${escapeHtml(block.content)}</pre>`);
+      }
+    } else {
+      try {
+        const rendered = katex.renderToString(block.content.trim(), { displayMode: false, throwOnError: false });
+        html = html.replace(`%%MATH_INLINE_${idx}%%`, rendered);
+      } catch(e) {
+        html = html.replace(`%%MATH_INLINE_${idx}%%`, `<code>${escapeHtml(block.content)}</code>`);
+      }
+    }
+  });
+  return html;
+}
+
+function buildOutlineFromElement(el) {
+  const headings = el.querySelectorAll('h1,h2,h3,h4,h5,h6');
+  dom.outlinePanel.innerHTML = '';
+  if (headings.length === 0) {
+    dom.outlinePanel.innerHTML = '<p style="padding:16px;font-size:13px;color:var(--text-muted)">No headings found</p>';
+    return;
+  }
+  headings.forEach((h, i) => {
+    const level = parseInt(h.tagName[1]);
+    const btn = document.createElement('button');
+    btn.className = 'toc-item';
+    btn.dataset.level = level;
+    btn.textContent = h.textContent;
+    btn.addEventListener('click', () => {
+      h.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      $$('.toc-item').forEach(t => t.classList.remove('active'));
+      btn.classList.add('active');
+    });
+    dom.outlinePanel.appendChild(btn);
+  });
+}
+
+function initPaneDividerDrag(divider) {
+  let startX, leftPane, rightPane, startLeftWidth, startRightWidth;
+
+  divider.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    divider.classList.add('dragging');
+    startX = e.clientX;
+    leftPane = divider.previousElementSibling;
+    rightPane = divider.nextElementSibling;
+    if (!leftPane || !rightPane) return;
+    startLeftWidth = leftPane.getBoundingClientRect().width;
+    startRightWidth = rightPane.getBoundingClientRect().width;
+
+    const onMouseMove = (e) => {
+      const dx = e.clientX - startX;
+      const newLeft = Math.max(200, startLeftWidth + dx);
+      const newRight = Math.max(200, startRightWidth - dx);
+      leftPane.style.flex = 'none';
+      rightPane.style.flex = 'none';
+      leftPane.style.width = newLeft + 'px';
+      rightPane.style.width = newRight + 'px';
+    };
+
+    const onMouseUp = () => {
+      divider.classList.remove('dragging');
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+    };
+
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+  });
+}
+
 // ===== Keyboard Shortcuts =====
 document.addEventListener('keydown', (e) => {
   const mod = e.metaKey || e.ctrlKey;
-  if (mod && e.key === 'o') { e.preventDefault(); dom.fileInput.click(); }
+  if (mod && e.key === 'o') { e.preventDefault(); $('#btnOpen').click(); }
   if (mod && e.key === '\\') { e.preventDefault(); $('#btnSidebar').click(); }
   if (mod && e.key === '/') { e.preventDefault(); toggleSourceMode(); }
   if (mod && e.key === 'f') { e.preventDefault(); $('#btnSearch').click(); }
   if (mod && e.key === 'p') { e.preventDefault(); window.print(); }
+  if (mod && e.key === 'w' && !e.shiftKey) {
+    e.preventDefault();
+    if (state.tabs.length > 0) closeTab(state.activeTabId);
+  }
   if (e.key === 'F11') { e.preventDefault(); $('#btnFocus').click(); }
   if (e.key === 'Escape') {
     if (state.searchVisible) { $('#btnSearch').click(); }
@@ -1509,6 +2071,8 @@ document.addEventListener('keydown', (e) => {
 // ===== Init =====
 applyTheme();
 $('#btnSidebar').classList.add('active');
+// First pane click handler for split view focus
+$('#pane-0').addEventListener('mousedown', () => setActivePane('pane-0'));
 
 // ===== Demo Content =====
 const demoContent = `# Welcome to MarkView
@@ -1526,6 +2090,8 @@ A beautiful, local Markdown reader inspired by **Typora**.
 - **Focus Mode** — Distraction-free reading
 - **Search** — Find text in your document
 - **Drag & Drop** — Drop \`.md\` files directly
+- **Tabs** — Open multiple files simultaneously
+- **Split View** — Side-by-side reading
 
 ## Getting Started
 
@@ -1536,6 +2102,7 @@ Open a Markdown file using the **Open** button, or simply **drag and drop** a fi
 | Shortcut | Action |
 |----------|--------|
 | \`⌘ + O\` | Open file |
+| \`⌘ + W\` | Close tab |
 | \`⌘ + \\\\\` | Toggle sidebar |
 | \`⌘ + /\` | Toggle source mode |
 | \`⌘ + F\` | Search |
@@ -1617,25 +2184,9 @@ $$
 *Built with care. Enjoy reading!*
 `;
 
-// ===== Native App Mode =====
-const isNativeApp = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.markview;
-if (isNativeApp) {
-  document.body.classList.add('native-app');
-}
-
 // Called from Swift to load a markdown file
 window.loadMarkdownFromApp = function(filename, content, filePath) {
-  state.currentFile = filename;
-  state.currentFilePath = filePath || filename; // Use filePath as unique key, fallback to filename
-  dom.titleText.textContent = filename + ' - MarkView';
-  document.title = filename + ' - MarkView';
-  renderMarkdown(content);
-  if (isNativeApp) {
-    window.webkit.messageHandlers.markview.postMessage({
-      action: 'updateTitle',
-      title: filename + ' - MarkView'
-    });
-  }
+  addTab(filename, filePath || filename, content);
 };
 
 // Called from Swift to populate sidebar file list after opening a folder
@@ -1651,13 +2202,11 @@ window.receiveFilesFromApp = function(filenames) {
     btn.addEventListener('click', () => {
       $$('.file-item').forEach(f => f.classList.remove('active'));
       btn.classList.add('active');
-      // Ask native side to load this file
       window.webkit.messageHandlers.markview.postMessage({ action: 'openFileByName', filename: name });
     });
     dom.filesPanel.appendChild(btn);
   });
 
-  // Switch to files tab
   $$('.sidebar-tab').forEach(t => t.classList.remove('active'));
   $$('.sidebar-tab')[1].classList.add('active');
   dom.outlinePanel.style.display = 'none';

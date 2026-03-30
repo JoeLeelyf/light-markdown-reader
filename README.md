@@ -11,14 +11,17 @@ Built with Swift + WKWebView. No Electron, no heavy dependencies — just a nati
 - **Markdown Rendering** — Full CommonMark support with GFM extensions (tables, task lists, strikethrough)
 - **Code Highlighting** — Syntax highlighting for 190+ languages via highlight.js
 - **Math Support** — LaTeX math rendering via KaTeX (inline `$...$` and block `$$...$$`)
-- **6 Themes** — Light, Dark, Sepia, Nord, Dracula, Solarized
+- **6 Themes** — Light, Dark, Sepia, Nord, Dracula, Solarized (synced across windows)
+- **Tabs** — Open multiple files simultaneously with a browser-style tab bar; drag tabs to reorder or drag outside the window to detach into a new window
+- **Split View** — Side-by-side reading with resizable panes
+- **Multi-Window** — Each window has its own independent state; create new windows from the menu or by detaching tabs
 - **Outline Sidebar** — Auto-generated table of contents from headings
 - **Folder Browsing** — Open a folder to browse all Markdown files in the sidebar
-- **Source Mode** — Toggle to view raw Markdown source
+- **Source Mode** — Toggle to view raw Markdown source (per-tab)
 - **Focus Mode** — Distraction-free reading
 - **Full-text Search** — Find and highlight text in your document
 - **PDF Export** — Export to paginated A4 PDF (also available via CLI)
-- **Reading Progress** — Remembers scroll position per file
+- **Reading Progress** — Remembers scroll position per file and per tab
 - **Drag & Drop** — Drop `.md` files directly onto the window
 - **File Association** — Register as a viewer for `.md`, `.markdown`, `.mdown`, `.mkd`, `.mdx`, `.txt`
 
@@ -27,6 +30,9 @@ Built with Swift + WKWebView. No Electron, no heavy dependencies — just a nati
 | Shortcut | Action |
 |---|---|
 | `⌘ O` | Open file |
+| `⌘ W` | Close tab |
+| `⌘ ⇧ W` | Close window |
+| `⌘ N` | New window |
 | `⌘ \` | Toggle sidebar |
 | `⌘ /` | Toggle source mode |
 | `⌘ F` | Search |
