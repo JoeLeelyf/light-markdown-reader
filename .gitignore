@@ -1,0 +1,6 @@
+.DS_Store
+
+# Build artifacts
+build/MarkView
+build/AppIcon.icns
+build/AppIcon.iconset/
