@@ -102,6 +102,13 @@ class MarkViewWindowController: NSObject, WKNavigationDelegate, NSWindowDelegate
             .init(filenameExtension: "mdown")!,
             .init(filenameExtension: "mkd")!,
             .init(filenameExtension: "txt")!,
+            .init(filenameExtension: "json")!,
+            .init(filenameExtension: "jsonl")!,
+            .init(filenameExtension: "ndjson")!,
+            .init(filenameExtension: "xml")!,
+            .init(filenameExtension: "toml")!,
+            .init(filenameExtension: "yaml")!,
+            .init(filenameExtension: "yml")!,
         ]
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
@@ -127,7 +134,7 @@ class MarkViewWindowController: NSObject, WKNavigationDelegate, NSWindowDelegate
 
     func openFolderAt(_ dirURL: URL) {
         let fm = FileManager.default
-        let exts: Set<String> = ["md", "markdown", "mdown", "mkd", "mkdn", "mdx", "txt"]
+        let exts: Set<String> = ["md", "markdown", "mdown", "mkd", "mkdn", "mdx", "txt", "json", "jsonl", "ndjson", "xml", "toml", "yaml", "yml"]
 
         guard let enumerator = fm.enumerator(at: dirURL, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles, .skipsSubdirectoryDescendants]),
               let files = enumerator.allObjects as? [URL] else { return }
@@ -455,7 +462,7 @@ class DragOverlayView: NSView {
             if let urlString = item.string(forType: .fileURL),
                let url = URL(string: urlString) {
                 let ext = url.pathExtension.lowercased()
-                if ["md", "markdown", "mdown", "mkd", "mkdn", "mdx", "txt"].contains(ext) {
+                if ["md", "markdown", "mdown", "mkd", "mkdn", "mdx", "txt", "json", "jsonl", "ndjson", "xml", "toml", "yaml", "yml"].contains(ext) {
                     windowController?.loadMarkdownFile(url: url)
                     return true
                 }
@@ -470,7 +477,7 @@ class DragOverlayView: NSView {
             if let urlString = item.string(forType: .fileURL),
                let url = URL(string: urlString) {
                 let ext = url.pathExtension.lowercased()
-                if ["md", "markdown", "mdown", "mkd", "mkdn", "mdx", "txt"].contains(ext) {
+                if ["md", "markdown", "mdown", "mkd", "mkdn", "mdx", "txt", "json", "jsonl", "ndjson", "xml", "toml", "yaml", "yml"].contains(ext) {
                     return true
                 }
             }

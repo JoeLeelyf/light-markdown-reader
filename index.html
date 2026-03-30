@@ -863,6 +863,179 @@ body.pdf-export-mode .pane:not(:first-child) { display: none !important; }
 /* Math */
 .markdown-body .katex-display { margin: 1em 0; overflow-x: auto; }
 
+/* ===== Structured Data View ===== */
+.data-view {
+  display: none;
+  max-width: 860px;
+  width: 100%;
+  padding: 20px 60px 120px;
+  font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace;
+  font-size: 13.5px;
+  line-height: 1.6;
+  animation: fadeIn 0.3s ease;
+}
+.data-view.active { display: block; }
+.data-view-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-color);
+}
+.data-format-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-radius: 4px;
+  background: var(--accent-light);
+  color: var(--accent);
+}
+.data-view-stats {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* JSON Tree */
+.json-tree {
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+}
+.json-tree details { margin: 0; padding: 0; }
+.json-tree summary {
+  cursor: pointer;
+  padding: 2px 0;
+  list-style: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.json-tree summary::-webkit-details-marker { display: none; }
+.json-tree summary::before {
+  content: '▸';
+  display: inline-block;
+  width: 14px;
+  font-size: 11px;
+  color: var(--text-muted);
+  transition: transform 0.15s;
+  flex-shrink: 0;
+}
+.json-tree details[open] > summary::before {
+  transform: rotate(90deg);
+}
+.json-tree .json-key {
+  color: var(--text-link);
+}
+.json-tree .json-string {
+  color: #0a8f3c;
+}
+.json-tree .json-number {
+  color: #005cc5;
+}
+.json-tree .json-boolean {
+  color: #bf4040;
+}
+.json-tree .json-null {
+  color: var(--text-muted);
+  font-style: italic;
+}
+.json-tree .json-bracket {
+  color: var(--text-secondary);
+}
+.json-tree .json-comma {
+  color: var(--text-secondary);
+}
+.json-tree .json-pair {
+  padding-left: 20px;
+}
+.json-tree > details > .json-pair {
+  padding-left: 0;
+}
+.json-tree .json-toggle {
+  cursor: pointer;
+  user-select: none;
+}
+
+/* JSONL */
+.jsonl-entry {
+  margin-bottom: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--bg-secondary);
+}
+.jsonl-entry-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  background: var(--bg-code-block);
+  border-bottom: 1px solid var(--border-light);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.jsonl-entry-body {
+  padding: 8px 12px;
+  font-family: "SF Mono", "Fira Code", Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.jsonl-load-more {
+  display: block;
+  width: 100%;
+  padding: 10px;
+  margin-top: 12px;
+  background: var(--bg-secondary);
+  border: 1px dashed var(--border-color);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.jsonl-load-more:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+/* Highlighted data block (YAML, TOML, XML) */
+.data-highlighted-block {
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--bg-code-block);
+}
+.data-highlighted-block pre {
+  margin: 0;
+  padding: 16px 20px;
+  overflow-x: auto;
+  font-family: "SF Mono", "Fira Code", Menlo, Consolas, monospace;
+  font-size: 13.5px;
+  line-height: 1.6;
+  tab-size: 2;
+}
+.data-highlighted-block code {
+  font-family: inherit;
+  font-size: inherit;
+}
+
+/* PDF export for data view */
+body.pdf-export-mode .data-view {
+  display: block !important;
+  max-width: 100%;
+  padding: 40px 50px 40px !important;
+}
+body.pdf-export-mode .data-view-header {
+  page-break-after: avoid;
+}
+body.pdf-export-mode .jsonl-entry { page-break-inside: avoid; }
+
+/* Source Mode */
+.data-view ~ .source-view {
+  display: none;
+}
+
 /* ===== Source Mode ===== */
 .source-view {
   display: none;
@@ -1086,6 +1259,7 @@ body.pdf-export-mode .markdown-body p { orphans: 3; widows: 3; }
           <button class="welcome-btn" id="btnWelcomeOpen">Open Markdown File</button>
         </div>
         <div class="markdown-body" id="markdownBody" style="display:none"></div>
+        <div class="data-view" id="dataView" style="display:none"></div>
         <div class="source-view" id="sourceView"><pre></pre></div>
       </div>
     </div>
@@ -1114,7 +1288,7 @@ body.pdf-export-mode .markdown-body p { orphans: 3; widows: 3; }
 </div>
 
 <!-- Hidden file input -->
-<input type="file" id="fileInput" accept=".md,.markdown,.mdown,.mkd,.mkdn,.mdx,.txt" style="display:none">
+<input type="file" id="fileInput" accept=".md,.markdown,.mdown,.mkd,.mkdn,.mdx,.txt,.json,.jsonl,.ndjson,.xml,.toml,.yaml,.yml" style="display:none">
 <input type="file" id="folderInput" webkitdirectory style="display:none">
 
 <!-- Libraries -->
@@ -1180,6 +1354,7 @@ const dom = {
   sidebar: $('#sidebar'),
   contentArea: $('#contentArea'),
   markdownBody: $('#markdownBody'),
+  dataView: $('#dataView'),
   sourceView: $('#sourceView'),
   welcomeScreen: $('#welcomeScreen'),
   outlinePanel: $('#outlinePanel'),
@@ -1241,6 +1416,23 @@ function escapeHtml(str) {
   return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+// ===== Format Detection =====
+const FORMAT_MAP = {
+  'json': 'json', 'jsonl': 'jsonl', 'ndjson': 'jsonl',
+  'xml': 'xml', 'toml': 'toml',
+  'yaml': 'yaml', 'yml': 'yaml',
+};
+
+function detectFormat(filename) {
+  if (!filename) return 'markdown';
+  const ext = filename.split('.').pop().toLowerCase();
+  return FORMAT_MAP[ext] || 'markdown';
+}
+
+function isStructuredFormat(format) {
+  return format && format !== 'markdown';
+}
+
 // ===== Copy Code =====
 window.copyCode = function(btn) {
   const code = btn.closest('pre').querySelector('code');
@@ -1268,6 +1460,7 @@ function addTab(filename, filePath, content) {
     filename: filename || 'Untitled',
     filePath: filePath || null,
     rawContent: content || '',
+    format: detectFormat(filename),
     cachedHTML: null,
     scrollRatio: 0,
     sourceMode: false,
@@ -1295,6 +1488,8 @@ function closeTab(tabId) {
     state.activeTabId = null;
     dom.markdownBody.innerHTML = '';
     dom.markdownBody.style.display = 'none';
+    dom.dataView.innerHTML = '';
+    dom.dataView.style.display = 'none';
     dom.sourceView.classList.remove('active');
     dom.welcomeScreen.style.display = '';
     dom.titleText.textContent = 'MarkView';
@@ -1342,7 +1537,27 @@ function activateTab(tabId) {
   }
 
   // Render content
-  if (tab.cachedHTML) {
+  if (isStructuredFormat(tab.format)) {
+    dom.markdownBody.style.display = 'none';
+    dom.dataView.style.display = 'none';
+    dom.welcomeScreen.style.display = 'none';
+
+    if (tab.cachedHTML) {
+      dom.dataView.innerHTML = tab.cachedHTML;
+      dom.dataView.style.display = tab.sourceMode ? 'none' : 'block';
+    } else if (tab.rawContent) {
+      dom.dataView.innerHTML = renderStructuredData(tab);
+      tab.cachedHTML = dom.dataView.innerHTML;
+      dom.dataView.style.display = tab.sourceMode ? 'none' : 'block';
+    }
+
+    dom.sourceView.querySelector('pre').textContent = tab.rawContent;
+    dom.sourceView.classList.toggle('active', tab.sourceMode);
+    $('#btnSource').classList.toggle('active', tab.sourceMode);
+    updateStructuredStats(tab);
+    setTimeout(() => restoreTabScrollPosition(tabId), 50);
+  } else if (tab.cachedHTML) {
+    dom.dataView.style.display = 'none';
     dom.markdownBody.innerHTML = tab.cachedHTML;
     dom.markdownBody.style.display = tab.sourceMode ? 'none' : 'block';
     dom.welcomeScreen.style.display = 'none';
@@ -1355,6 +1570,7 @@ function activateTab(tabId) {
   } else if (tab.rawContent) {
     renderMarkdown(tab.rawContent);
   } else {
+    dom.dataView.style.display = 'none';
     dom.markdownBody.innerHTML = '';
     dom.markdownBody.style.display = 'none';
     dom.welcomeScreen.style.display = '';
@@ -1463,6 +1679,10 @@ function restoreTabScrollPosition(tabId) {
 function renderMarkdown(content) {
   const tab = getActiveTab();
   if (tab) tab.rawContent = content;
+
+  // Hide data view to prevent stale display
+  dom.dataView.style.display = 'none';
+  dom.dataView.innerHTML = '';
 
   // Handle math: protect LaTeX before marked processes it
   let processed = content;
@@ -1608,7 +1828,7 @@ dom.fileInput.addEventListener('change', (e) => {
 
 dom.folderInput.addEventListener('change', (e) => {
   const files = Array.from(e.target.files).filter(f =>
-    /\.(md|markdown|mdown|mkd|mkdn|mdx|txt)$/i.test(f.name)
+    /\.(md|markdown|mdown|mkd|mkdn|mdx|txt|json|jsonl|ndjson|xml|toml|yaml|yml)$/i.test(f.name)
   ).sort((a, b) => a.name.localeCompare(b.name));
 
   state.files = files;
@@ -1666,7 +1886,7 @@ document.addEventListener('drop', (e) => {
   dom.dropzone.classList.remove('active');
   const files = e.dataTransfer.files;
   if (files.length > 0) {
-    const mdFile = Array.from(files).find(f => /\.(md|markdown|mdown|mkd|txt|mdx)$/i.test(f.name));
+    const mdFile = Array.from(files).find(f => /\.(md|markdown|mdown|mkd|txt|mdx|json|jsonl|ndjson|xml|toml|yaml|yml)$/i.test(f.name));
     if (mdFile) openFile(mdFile);
   }
 });
@@ -1707,7 +1927,11 @@ function toggleSourceMode() {
   if (tab) {
     tab.sourceMode = !tab.sourceMode;
     dom.sourceView.classList.toggle('active', tab.sourceMode);
-    dom.markdownBody.style.display = tab.sourceMode ? 'none' : 'block';
+    if (isStructuredFormat(tab.format)) {
+      dom.dataView.style.display = tab.sourceMode ? 'none' : 'block';
+    } else {
+      dom.markdownBody.style.display = tab.sourceMode ? 'none' : 'block';
+    }
     $('#btnSource').classList.toggle('active', tab.sourceMode);
   }
 }
@@ -1863,6 +2087,11 @@ function toggleSplitView(direction) {
   mdBody.style.display = 'none';
   contentArea.appendChild(mdBody);
 
+  const dv = document.createElement('div');
+  dv.className = 'data-view';
+  dv.style.display = 'none';
+  contentArea.appendChild(dv);
+
   const srcView = document.createElement('div');
   srcView.className = 'source-view';
   srcView.innerHTML = '<pre></pre>';
@@ -1943,12 +2172,31 @@ function renderTabInPane(tab, paneEl) {
   const srcView = paneEl.querySelector('.source-view');
   const welcome = paneEl.querySelector('.welcome');
 
-  if (tab.cachedHTML) {
+  // Ensure this pane has a dataView
+  let dataView = paneEl.querySelector('.data-view');
+  if (!dataView) {
+    dataView = document.createElement('div');
+    dataView.className = 'data-view';
+    mdBody.parentNode.insertBefore(dataView, srcView);
+  }
+
+  if (isStructuredFormat(tab.format)) {
+    mdBody.style.display = 'none';
+    if (tab.cachedHTML) {
+      dataView.innerHTML = tab.cachedHTML;
+    } else if (tab.rawContent) {
+      dataView.innerHTML = renderStructuredData(tab);
+      tab.cachedHTML = dataView.innerHTML;
+    }
+    dataView.style.display = tab.sourceMode ? 'none' : 'block';
+    if (welcome) welcome.style.display = 'none';
+  } else if (tab.cachedHTML) {
+    dataView.style.display = 'none';
     mdBody.innerHTML = tab.cachedHTML;
     mdBody.style.display = 'block';
     if (welcome) welcome.style.display = 'none';
   } else if (tab.rawContent) {
-    // Quick render for the split pane
+    dataView.style.display = 'none';
     mdBody.innerHTML = renderMarkdownToHTML(tab.rawContent);
     tab.cachedHTML = mdBody.innerHTML;
     mdBody.style.display = 'block';
@@ -1956,7 +2204,11 @@ function renderTabInPane(tab, paneEl) {
   }
   srcView.querySelector('pre').textContent = tab.rawContent || '';
   srcView.classList.toggle('active', tab.sourceMode);
-  mdBody.style.display = tab.sourceMode ? 'none' : 'block';
+  if (isStructuredFormat(tab.format)) {
+    dataView.style.display = tab.sourceMode ? 'none' : 'block';
+  } else {
+    mdBody.style.display = tab.sourceMode ? 'none' : 'block';
+  }
 }
 
 function renderMarkdownToHTML(content) {
@@ -1992,6 +2244,272 @@ function renderMarkdownToHTML(content) {
   });
   return html;
 }
+
+// ===== Structured Data Renderers =====
+
+function renderStructuredData(tab) {
+  try {
+    switch (tab.format) {
+      case 'json': return renderJSON(tab.rawContent);
+      case 'jsonl': return renderJSONL(tab.rawContent);
+      case 'xml': return renderXML(tab.rawContent);
+      case 'yaml': return renderHighlightedData(tab.rawContent, 'yaml', 'YAML');
+      case 'toml': return renderHighlightedData(tab.rawContent, 'ini', 'TOML');
+      default: return null;
+    }
+  } catch (e) {
+    return `<div style="color:var(--text-secondary);padding:20px;">
+      <p><strong>Failed to parse ${escapeHtml(tab.format)}:</strong> ${escapeHtml(e.message)}</p>
+      <pre style="margin-top:12px;padding:16px;background:var(--bg-code-block);border-radius:8px;overflow-x:auto;">${escapeHtml(tab.rawContent.substring(0, 2000))}${tab.rawContent.length > 2000 ? '\n... (truncated)' : ''}</pre>
+    </div>`;
+  }
+}
+
+function renderJSON(content) {
+  // Large file fallback: >5MB
+  if (content.length > 5 * 1024 * 1024) {
+    return `<div class="data-view-header"><span class="data-format-badge">JSON</span></div>` +
+      renderHighlightedData(content, 'json', 'JSON');
+  }
+
+  const data = JSON.parse(content);
+  const stats = getJSONStats(data);
+
+  let html = `<div class="data-view-header"><span class="data-format-badge">JSON</span><span class="data-view-stats">${escapeHtml(stats)}</span></div>`;
+  html += '<div class="json-tree">';
+  html += jsonToTree(data, '', 0, true);
+  html += '</div>';
+  return html;
+}
+
+function getJSONStats(data) {
+  if (Array.isArray(data)) return `Array with ${data.length} items`;
+  if (data && typeof data === 'object') return `Object with ${Object.keys(data).length} keys`;
+  return 'JSON value';
+}
+
+function jsonToTree(data, key, depth, isRoot) {
+  const maxDepth = 6;
+  const indent = isRoot ? '' : 'padding-left:20px;';
+
+  if (data === null) {
+    const keyStr = key !== '' ? `<span class="json-key">"${escapeHtml(key)}"</span>: ` : '';
+    return `${keyStr}<span class="json-null">null</span>`;
+  }
+  if (typeof data === 'boolean') {
+    const keyStr = key !== '' ? `<span class="json-key">"${escapeHtml(key)}"</span>: ` : '';
+    return `${keyStr}<span class="json-boolean">${data}</span>`;
+  }
+  if (typeof data === 'number') {
+    const keyStr = key !== '' ? `<span class="json-key">"${escapeHtml(key)}"</span>: ` : '';
+    return `${keyStr}<span class="json-number">${data}</span>`;
+  }
+  if (typeof data === 'string') {
+    const keyStr = key !== '' ? `<span class="json-key">"${escapeHtml(key)}"</span>: ` : '';
+    const display = data.length > 200 ? escapeHtml(data.substring(0, 200)) + '<span style="color:var(--text-muted)">…</span>' : escapeHtml(data);
+    return `${keyStr}<span class="json-string">"${display}"</span>`;
+  }
+
+  if (Array.isArray(data)) {
+    const keyStr = key !== '' ? `<span class="json-key">"${escapeHtml(key)}"</span>: ` : '';
+    if (data.length === 0) return `${keyStr}<span class="json-bracket">[]</span>`;
+
+    const isCollapsed = depth >= 1 && !isRoot;
+    const detailsAttrs = isCollapsed ? '' : 'open';
+    const preview = data.slice(0, 3).map(v => jsonPreview(v)).join(', ');
+    const suffix = data.length > 3 ? ', …' : '';
+
+    let html = `<details ${detailsAttrs}><summary>${keyStr}<span class="json-bracket">[</span>`;
+    html += `<span class="json-number">${data.length}</span><span class="json-bracket">]</span>`;
+    html += ` <span style="color:var(--text-muted);font-size:12px">${preview}${suffix}</span></summary>`;
+    html += `<div class="json-pair" style="${indent}">`;
+    data.forEach((item, i) => {
+      html += jsonToTree(item, '', depth + 1, false);
+      if (i < data.length - 1) html += '<span class="json-comma">,</span>';
+    });
+    html += '</div></details>';
+    return html;
+  }
+
+  if (typeof data === 'object') {
+    const entries = Object.entries(data);
+    const keyStr = key !== '' ? `<span class="json-key">"${escapeHtml(key)}"</span>: ` : '';
+    if (entries.length === 0) return `${keyStr}<span class="json-bracket">{}</span>`;
+
+    const isCollapsed = depth >= 1 && !isRoot;
+    const detailsAttrs = isCollapsed ? '' : 'open';
+    const previewKeys = entries.slice(0, 3).map(([k]) => k).map(k => `"${escapeHtml(k)}"`).join(', ');
+    const suffix = entries.length > 3 ? ', …' : '';
+
+    let html = `<details ${detailsAttrs}><summary>${keyStr}<span class="json-bracket">{</span>`;
+    html += `<span class="json-number">${entries.length}</span><span class="json-bracket">}</span>`;
+    html += ` <span style="color:var(--text-muted);font-size:12px">${previewKeys}${suffix}</span></summary>`;
+    html += `<div class="json-pair" style="${indent}">`;
+    entries.forEach(([k, v], i) => {
+      html += jsonToTree(v, k, depth + 1, false);
+      if (i < entries.length - 1) html += '<span class="json-comma">,</span>';
+    });
+    html += '</div></details>';
+    return html;
+  }
+
+  return escapeHtml(String(data));
+}
+
+function jsonPreview(val) {
+  if (val === null) return 'null';
+  if (typeof val === 'boolean') return String(val);
+  if (typeof val === 'number') return String(val);
+  if (typeof val === 'string') return `"${val.length > 30 ? escapeHtml(val.substring(0, 30)) + '…' : escapeHtml(val)}"`;
+  if (Array.isArray(val)) return `Array(${val.length})`;
+  if (typeof val === 'object') return `{${Object.keys(val).length}}`;
+  return String(val);
+}
+
+function renderJSONL(content) {
+  const lines = content.split('\n').filter(l => l.trim());
+  const total = lines.length;
+
+  let html = `<div class="data-view-header"><span class="data-format-badge">JSONL</span><span class="data-view-stats">${total} entries</span></div>`;
+  html += '<div id="jsonlContainer">';
+
+  const batchSize = 100;
+  const initialCount = Math.min(batchSize, lines.length);
+
+  for (let i = 0; i < initialCount; i++) {
+    html += renderJSONLEntry(lines[i], i + 1);
+  }
+
+  html += '</div>';
+
+  if (lines.length > batchSize) {
+    html += `<button class="jsonl-load-more" id="jsonlLoadMore" data-offset="${batchSize}" data-total="${total}">Load more (${batchSize} / ${total})</button>`;
+  }
+
+  return html;
+}
+
+function renderJSONLEntry(line, lineNum) {
+  let body = '';
+  try {
+    const data = JSON.parse(line);
+    body = '<div class="json-tree">' + jsonToTree(data, '', 0, true) + '</div>';
+  } catch (e) {
+    body = `<pre style="margin:0;white-space:pre-wrap;word-break:break-all;color:var(--text-muted)">${escapeHtml(line)}</pre>`;
+  }
+  return `<div class="jsonl-entry">
+    <div class="jsonl-entry-header"><span>Line ${lineNum}</span></div>
+    <div class="jsonl-entry-body">${body}</div>
+  </div>`;
+}
+
+function renderXML(content) {
+  // Simple XML formatter
+  const formatted = formatXML(content);
+  const lines = formatted.split('\n');
+  let html = `<div class="data-view-header"><span class="data-format-badge">XML</span><span class="data-view-stats">${lines.length} lines</span></div>`;
+  try {
+    const highlighted = hljs.highlight(formatted, { language: 'xml' }).value;
+    html += `<div class="data-highlighted-block"><pre><code class="hljs language-xml">${highlighted}</code></pre></div>`;
+  } catch (e) {
+    html += `<div class="data-highlighted-block"><pre><code>${escapeHtml(formatted)}</code></pre></div>`;
+  }
+  return html;
+}
+
+function formatXML(xml) {
+  let formatted = '';
+  let indent = 0;
+  const tab = '  ';
+  // Remove existing whitespace between tags
+  xml = xml.replace(/(>)\s*(<)/g, '$1\n$2');
+  const lines = xml.split('\n');
+
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) continue;
+    // Closing tag
+    if (line.startsWith('</')) {
+      indent = Math.max(0, indent - 1);
+      formatted += tab.repeat(indent) + line + '\n';
+    }
+    // Self-closing tag or processing instruction or comment
+    else if (line.endsWith('/>') || line.startsWith('<?') || line.startsWith('<!')) {
+      formatted += tab.repeat(indent) + line + '\n';
+    }
+    // Opening tag (no closing on same line)
+    else if (line.startsWith('<') && !line.startsWith('</')) {
+      formatted += tab.repeat(indent) + line + '\n';
+      if (!line.includes('</')) indent++;
+    }
+    // Text content
+    else {
+      formatted += tab.repeat(indent) + line + '\n';
+    }
+  }
+  return formatted.trim();
+}
+
+function renderHighlightedData(content, lang, name) {
+  const lines = content.split('\n');
+  let html = `<div class="data-view-header"><span class="data-format-badge">${escapeHtml(name)}</span><span class="data-view-stats">${lines.length} lines</span></div>`;
+  try {
+    if (hljs.getLanguage(lang)) {
+      const highlighted = hljs.highlight(content, { language: lang }).value;
+      html += `<div class="data-highlighted-block"><pre><code class="hljs language-${lang}">${highlighted}</code></pre></div>`;
+    } else {
+      html += `<div class="data-highlighted-block"><pre><code>${escapeHtml(content)}</code></pre></div>`;
+    }
+  } catch (e) {
+    html += `<div class="data-highlighted-block"><pre><code>${escapeHtml(content)}</code></pre></div>`;
+  }
+  return html;
+}
+
+function updateStructuredStats(tab) {
+  if (!tab || !isStructuredFormat(tab.format)) {
+    dom.statWords.textContent = '';
+    dom.statChars.textContent = '';
+    dom.statLines.textContent = '';
+    dom.statReadTime.textContent = '';
+    return;
+  }
+  const lines = tab.rawContent.split('\n').length;
+  const chars = tab.rawContent.length;
+  dom.statWords.textContent = tab.format.toUpperCase();
+  dom.statChars.textContent = `${chars} chars`;
+  dom.statLines.textContent = `${lines} lines`;
+  dom.statReadTime.textContent = '';
+}
+
+// JSONL "Load more" button handler
+document.addEventListener('click', (e) => {
+  if (e.target && e.target.id === 'jsonlLoadMore') {
+    const btn = e.target;
+    const offset = parseInt(btn.dataset.offset);
+    const total = parseInt(btn.dataset.total);
+    const batchSize = 100;
+
+    const tab = getActiveTab();
+    if (!tab) return;
+
+    const lines = tab.rawContent.split('\n').filter(l => l.trim());
+    const container = document.getElementById('jsonlContainer');
+    if (!container) return;
+
+    const end = Math.min(offset + batchSize, lines.length);
+    for (let i = offset; i < end; i++) {
+      container.insertAdjacentHTML('beforeend', renderJSONLEntry(lines[i], i + 1));
+    }
+
+    if (end >= total) {
+      btn.remove();
+    } else {
+      btn.dataset.offset = String(end);
+      btn.textContent = `Load more (${end} / ${total})`;
+    }
+  }
+});
 
 function buildOutlineFromElement(el) {
   const headings = el.querySelectorAll('h1,h2,h3,h4,h5,h6');
