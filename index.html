@@ -862,6 +862,15 @@ body.pdf-export-mode .pane:not(:first-child) { display: none !important; }
 
 /* Math */
 .markdown-body .katex-display { margin: 1em 0; overflow-x: auto; }
+.markdown-body .math-error {
+  background: var(--bg-code-block);
+  color: #d32f2f;
+  border-left: 3px solid #d32f2f;
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-size: 0.9em;
+  overflow-x: auto;
+}
 
 /* ===== Structured Data View ===== */
 .data-view {
@@ -905,13 +914,16 @@ body.pdf-export-mode .pane:not(:first-child) { display: none !important; }
   font-size: inherit;
   line-height: inherit;
 }
-.json-tree details { margin: 0; padding: 0; }
+.json-tree details {
+  margin: 0;
+  padding: 0;
+}
 .json-tree summary {
   cursor: pointer;
   padding: 2px 0;
   list-style: none;
-  display: inline-flex;
-  align-items: center;
+  display: flex;
+  align-items: flex-start;
   gap: 4px;
 }
 .json-tree summary::-webkit-details-marker { display: none; }
@@ -949,11 +961,28 @@ body.pdf-export-mode .pane:not(:first-child) { display: none !important; }
 .json-tree .json-comma {
   color: var(--text-secondary);
 }
-.json-tree .json-pair {
-  padding-left: 20px;
+.json-tree .json-colon {
+  color: var(--text-secondary);
 }
-.json-tree > details > .json-pair {
-  padding-left: 0;
+.json-tree .json-index {
+  color: var(--text-muted);
+}
+.json-tree .json-preview {
+  color: var(--text-muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.json-tree .json-line {
+  display: block;
+  padding: 2px 0;
+}
+.json-tree .json-children {
+  margin-left: 18px;
+  padding-left: 12px;
+  border-left: 1px solid var(--border-light);
+}
+.json-tree > .json-node > .json-children {
+  margin-left: 0;
 }
 .json-tree .json-toggle {
   cursor: pointer;
@@ -1328,7 +1357,7 @@ const ReadingProgress = {
     catch { return {}; }
   },
   save(fileKey, scrollRatio) {
-    if (!fileKey) return;
+    if (!fileKey || !isFinite(scrollRatio)) return;
     const all = this.getAll();
     all[fileKey] = { ratio: scrollRatio, timestamp: Date.now() };
     const keys = Object.keys(all);
@@ -1336,7 +1365,7 @@ const ReadingProgress = {
       const sorted = keys.sort((a, b) => (all[a].timestamp || 0) - (all[b].timestamp || 0));
       sorted.slice(0, keys.length - this.MAX_ENTRIES).forEach(k => delete all[k]);
     }
-    localStorage.setItem(this.STORAGE_KEY, JSON.stringify(all));
+    try { localStorage.setItem(this.STORAGE_KEY, JSON.stringify(all)); } catch {}
   },
   load(fileKey) {
     if (!fileKey) return null;
@@ -1431,6 +1460,58 @@ function detectFormat(filename) {
 
 function isStructuredFormat(format) {
   return format && format !== 'markdown';
+}
+
+function toFileURL(filePath) {
+  if (!filePath) return null;
+  try {
+    return new URL(filePath).href;
+  } catch (e) {
+    const normalized = String(filePath).replace(/\\/g, '/');
+    const absolutePath = normalized.startsWith('/') ? normalized : `/${normalized}`;
+    return `file://${encodeURI(absolutePath)}`;
+  }
+}
+
+function toLocalFileURL(fileURL) {
+  if (!fileURL) return fileURL;
+  // Convert file:// URLs to localfile:// for WKWebView custom scheme handler
+  if (typeof fileURL === 'string' && fileURL.startsWith('file://')) {
+    return 'localfile://' + fileURL.slice('file://'.length);
+  }
+  return fileURL;
+}
+
+function shouldResolveRelativeURL(url) {
+  if (!url) return false;
+  const value = String(url).trim();
+  return value && !/^(?:[a-zA-Z][a-zA-Z\d+.-]*:|\/\/|#)/.test(value);
+}
+
+function resolveRelativeURL(url, filePath) {
+  if (!filePath || !shouldResolveRelativeURL(url)) return url;
+  try {
+    const baseURL = new URL('.', toFileURL(filePath));
+    const resolved = new URL(url, baseURL).href;
+    return toLocalFileURL(resolved);
+  } catch (e) {
+    return url;
+  }
+}
+
+function resolveMarkdownAssetURLs(container, filePath) {
+  if (!container || !filePath) return;
+  container.querySelectorAll('img[src]').forEach((img) => {
+    const src = img.getAttribute('src');
+    if (src && src.startsWith('file://')) {
+      img.setAttribute('src', toLocalFileURL(src));
+      return;
+    }
+    const resolved = resolveRelativeURL(src, filePath);
+    if (resolved !== src) {
+      img.setAttribute('src', resolved);
+    }
+  });
 }
 
 // ===== Copy Code =====
@@ -1669,7 +1750,7 @@ function restoreTabScrollPosition(tabId) {
     if (saved !== null) ratio = saved;
   }
 
-  if (ratio > 0) {
+  if (ratio > 0 && isFinite(ratio)) {
     const maxScroll = dom.contentArea.scrollHeight - dom.contentArea.clientHeight;
     dom.contentArea.scrollTop = ratio * maxScroll;
   }
@@ -1683,40 +1764,7 @@ function renderMarkdown(content) {
   // Hide data view to prevent stale display
   dom.dataView.style.display = 'none';
   dom.dataView.innerHTML = '';
-
-  // Handle math: protect LaTeX before marked processes it
-  let processed = content;
-  const mathBlocks = [];
-  processed = processed.replace(/\$\$([\s\S]*?)\$\$/g, (match, math) => {
-    const idx = mathBlocks.length;
-    mathBlocks.push({ type: 'block', content: math });
-    return `%%MATH_BLOCK_${idx}%%`;
-  });
-  processed = processed.replace(/(?<![\\$])\$(?!\$)(.+?)(?<![\\$])\$/g, (match, math) => {
-    const idx = mathBlocks.length;
-    mathBlocks.push({ type: 'inline', content: math });
-    return `%%MATH_INLINE_${idx}%%`;
-  });
-
-  let html = marked.parse(processed);
-
-  mathBlocks.forEach((block, idx) => {
-    if (block.type === 'block') {
-      try {
-        const rendered = katex.renderToString(block.content.trim(), { displayMode: true, throwOnError: false });
-        html = html.replace(`%%MATH_BLOCK_${idx}%%`, rendered);
-      } catch(e) {
-        html = html.replace(`%%MATH_BLOCK_${idx}%%`, `<pre class="math-error">${escapeHtml(block.content)}</pre>`);
-      }
-    } else {
-      try {
-        const rendered = katex.renderToString(block.content.trim(), { displayMode: false, throwOnError: false });
-        html = html.replace(`%%MATH_INLINE_${idx}%%`, rendered);
-      } catch(e) {
-        html = html.replace(`%%MATH_INLINE_${idx}%%`, `<code>${escapeHtml(block.content)}</code>`);
-      }
-    }
-  });
+  const html = renderMarkdownToHTML(content, tab ? tab.filePath : null);
 
   dom.markdownBody.innerHTML = html;
   dom.markdownBody.style.display = 'block';
@@ -1957,7 +2005,7 @@ function setTheme(themeName) {
 
 function applyTheme() {
   document.documentElement.dataset.theme = state.theme;
-  localStorage.setItem('markview-theme', state.theme);
+  try { localStorage.setItem('markview-theme', state.theme); } catch {}
   const isDark = DARK_THEMES.includes(state.theme);
   $('#iconSun').style.display = isDark ? 'none' : 'block';
   $('#iconMoon').style.display = isDark ? 'block' : 'none';
@@ -2197,7 +2245,7 @@ function renderTabInPane(tab, paneEl) {
     if (welcome) welcome.style.display = 'none';
   } else if (tab.rawContent) {
     dataView.style.display = 'none';
-    mdBody.innerHTML = renderMarkdownToHTML(tab.rawContent);
+    mdBody.innerHTML = renderMarkdownToHTML(tab.rawContent, tab.filePath);
     tab.cachedHTML = mdBody.innerHTML;
     mdBody.style.display = 'block';
     if (welcome) welcome.style.display = 'none';
@@ -2211,38 +2259,53 @@ function renderTabInPane(tab, paneEl) {
   }
 }
 
-function renderMarkdownToHTML(content) {
+function renderMarkdownToHTML(content, filePath) {
   let processed = content;
   const mathBlocks = [];
+  const mathNonce = Math.random().toString(36).slice(2, 10);
   processed = processed.replace(/\$\$([\s\S]*?)\$\$/g, (match, math) => {
     const idx = mathBlocks.length;
     mathBlocks.push({ type: 'block', content: math });
-    return `%%MATH_BLOCK_${idx}%%`;
+    return `%%MATH_BLOCK_${mathNonce}_${idx}%%`;
   });
   processed = processed.replace(/(?<![\\$])\$(?!\$)(.+?)(?<![\\$])\$/g, (match, math) => {
     const idx = mathBlocks.length;
     mathBlocks.push({ type: 'inline', content: math });
-    return `%%MATH_INLINE_${idx}%%`;
+    return `%%MATH_INLINE_${mathNonce}_${idx}%%`;
   });
   let html = marked.parse(processed);
   mathBlocks.forEach((block, idx) => {
+    const content = block.content.trim();
     if (block.type === 'block') {
+      if (!content) {
+        html = html.replace(`%%MATH_BLOCK_${mathNonce}_${idx}%%`, '');
+        return;
+      }
       try {
-        const rendered = katex.renderToString(block.content.trim(), { displayMode: true, throwOnError: false });
-        html = html.replace(`%%MATH_BLOCK_${idx}%%`, rendered);
+        const rendered = katex.renderToString(content, { displayMode: true, throwOnError: false });
+        html = html.replace(`%%MATH_BLOCK_${mathNonce}_${idx}%%`, rendered);
       } catch(e) {
-        html = html.replace(`%%MATH_BLOCK_${idx}%%`, `<pre class="math-error">${escapeHtml(block.content)}</pre>`);
+        html = html.replace(`%%MATH_BLOCK_${mathNonce}_${idx}%%`, `<pre class="math-error">${escapeHtml(block.content)}</pre>`);
       }
     } else {
+      if (!content) {
+        html = html.replace(`%%MATH_INLINE_${mathNonce}_${idx}%%`, '');
+        return;
+      }
       try {
-        const rendered = katex.renderToString(block.content.trim(), { displayMode: false, throwOnError: false });
-        html = html.replace(`%%MATH_INLINE_${idx}%%`, rendered);
+        const rendered = katex.renderToString(content, { displayMode: false, throwOnError: false });
+        html = html.replace(`%%MATH_INLINE_${mathNonce}_${idx}%%`, rendered);
       } catch(e) {
-        html = html.replace(`%%MATH_INLINE_${idx}%%`, `<code>${escapeHtml(block.content)}</code>`);
+        html = html.replace(`%%MATH_INLINE_${mathNonce}_${idx}%%`, `<code>${escapeHtml(block.content)}</code>`);
       }
     }
   });
-  return html;
+  if (!filePath) return html;
+
+  const template = document.createElement('template');
+  template.innerHTML = html;
+  resolveMarkdownAssetURLs(template.content, filePath);
+  return template.innerHTML;
 }
 
 // ===== Structured Data Renderers =====
@@ -2288,44 +2351,53 @@ function getJSONStats(data) {
   return 'JSON value';
 }
 
-function jsonToTree(data, key, depth, isRoot) {
-  const maxDepth = 6;
-  const indent = isRoot ? '' : 'padding-left:20px;';
+function formatJSONKey(key, keyKind) {
+  if (key === '' || key === null || key === undefined) return '';
+  if (keyKind === 'index') {
+    return `<span class="json-index">[${escapeHtml(String(key))}]</span><span class="json-colon">:</span> `;
+  }
+  return `<span class="json-key">"${escapeHtml(String(key))}"</span><span class="json-colon">:</span> `;
+}
 
+function renderJSONPrimitive(data, key, keyKind) {
+  const keyStr = formatJSONKey(key, keyKind);
   if (data === null) {
-    const keyStr = key !== '' ? `<span class="json-key">"${escapeHtml(key)}"</span>: ` : '';
-    return `${keyStr}<span class="json-null">null</span>`;
+    return `<div class="json-line">${keyStr}<span class="json-null">null</span></div>`;
   }
   if (typeof data === 'boolean') {
-    const keyStr = key !== '' ? `<span class="json-key">"${escapeHtml(key)}"</span>: ` : '';
-    return `${keyStr}<span class="json-boolean">${data}</span>`;
+    return `<div class="json-line">${keyStr}<span class="json-boolean">${data}</span></div>`;
   }
   if (typeof data === 'number') {
-    const keyStr = key !== '' ? `<span class="json-key">"${escapeHtml(key)}"</span>: ` : '';
-    return `${keyStr}<span class="json-number">${data}</span>`;
+    return `<div class="json-line">${keyStr}<span class="json-number">${data}</span></div>`;
   }
   if (typeof data === 'string') {
-    const keyStr = key !== '' ? `<span class="json-key">"${escapeHtml(key)}"</span>: ` : '';
     const display = data.length > 200 ? escapeHtml(data.substring(0, 200)) + '<span style="color:var(--text-muted)">…</span>' : escapeHtml(data);
-    return `${keyStr}<span class="json-string">"${display}"</span>`;
+    return `<div class="json-line">${keyStr}<span class="json-string">"${display}"</span></div>`;
   }
+  return null;
+}
+
+function jsonToTree(data, key, depth, isRoot, keyKind = 'property') {
+  const primitive = renderJSONPrimitive(data, key, keyKind);
+  if (primitive) return primitive;
 
   if (Array.isArray(data)) {
-    const keyStr = key !== '' ? `<span class="json-key">"${escapeHtml(key)}"</span>: ` : '';
-    if (data.length === 0) return `${keyStr}<span class="json-bracket">[]</span>`;
+    const keyStr = formatJSONKey(key, keyKind);
+    if (data.length === 0) {
+      return `<div class="json-line">${keyStr}<span class="json-bracket">[]</span></div>`;
+    }
 
     const isCollapsed = depth >= 1 && !isRoot;
     const detailsAttrs = isCollapsed ? '' : 'open';
     const preview = data.slice(0, 3).map(v => jsonPreview(v)).join(', ');
     const suffix = data.length > 3 ? ', …' : '';
 
-    let html = `<details ${detailsAttrs}><summary>${keyStr}<span class="json-bracket">[</span>`;
+    let html = `<details class="json-node" ${detailsAttrs}><summary>${keyStr}<span class="json-bracket">[</span>`;
     html += `<span class="json-number">${data.length}</span><span class="json-bracket">]</span>`;
-    html += ` <span style="color:var(--text-muted);font-size:12px">${preview}${suffix}</span></summary>`;
-    html += `<div class="json-pair" style="${indent}">`;
+    html += `<span class="json-preview">${preview}${suffix}</span></summary>`;
+    html += '<div class="json-children">';
     data.forEach((item, i) => {
-      html += jsonToTree(item, '', depth + 1, false);
-      if (i < data.length - 1) html += '<span class="json-comma">,</span>';
+      html += jsonToTree(item, i, depth + 1, false, 'index');
     });
     html += '</div></details>';
     return html;
@@ -2333,27 +2405,28 @@ function jsonToTree(data, key, depth, isRoot) {
 
   if (typeof data === 'object') {
     const entries = Object.entries(data);
-    const keyStr = key !== '' ? `<span class="json-key">"${escapeHtml(key)}"</span>: ` : '';
-    if (entries.length === 0) return `${keyStr}<span class="json-bracket">{}</span>`;
+    const keyStr = formatJSONKey(key, keyKind);
+    if (entries.length === 0) {
+      return `<div class="json-line">${keyStr}<span class="json-bracket">{}</span></div>`;
+    }
 
     const isCollapsed = depth >= 1 && !isRoot;
     const detailsAttrs = isCollapsed ? '' : 'open';
     const previewKeys = entries.slice(0, 3).map(([k]) => k).map(k => `"${escapeHtml(k)}"`).join(', ');
     const suffix = entries.length > 3 ? ', …' : '';
 
-    let html = `<details ${detailsAttrs}><summary>${keyStr}<span class="json-bracket">{</span>`;
+    let html = `<details class="json-node" ${detailsAttrs}><summary>${keyStr}<span class="json-bracket">{</span>`;
     html += `<span class="json-number">${entries.length}</span><span class="json-bracket">}</span>`;
-    html += ` <span style="color:var(--text-muted);font-size:12px">${previewKeys}${suffix}</span></summary>`;
-    html += `<div class="json-pair" style="${indent}">`;
-    entries.forEach(([k, v], i) => {
+    html += `<span class="json-preview">${previewKeys}${suffix}</span></summary>`;
+    html += '<div class="json-children">';
+    entries.forEach(([k, v]) => {
       html += jsonToTree(v, k, depth + 1, false);
-      if (i < entries.length - 1) html += '<span class="json-comma">,</span>';
     });
     html += '</div></details>';
     return html;
   }
 
-  return escapeHtml(String(data));
+  return `<div class="json-line">${formatJSONKey(key, keyKind)}${escapeHtml(String(data))}</div>`;
 }
 
 function jsonPreview(val) {
@@ -2366,23 +2439,32 @@ function jsonPreview(val) {
   return String(val);
 }
 
+function getJSONLRecords(content) {
+  return content.split(/\r?\n/).reduce((records, line, index) => {
+    if (line.trim()) {
+      records.push({ line, lineNumber: index + 1 });
+    }
+    return records;
+  }, []);
+}
+
 function renderJSONL(content) {
-  const lines = content.split('\n').filter(l => l.trim());
-  const total = lines.length;
+  const records = getJSONLRecords(content);
+  const total = records.length;
 
   let html = `<div class="data-view-header"><span class="data-format-badge">JSONL</span><span class="data-view-stats">${total} entries</span></div>`;
   html += '<div id="jsonlContainer">';
 
   const batchSize = 100;
-  const initialCount = Math.min(batchSize, lines.length);
+  const initialCount = Math.min(batchSize, records.length);
 
   for (let i = 0; i < initialCount; i++) {
-    html += renderJSONLEntry(lines[i], i + 1);
+    html += renderJSONLEntry(records[i].line, records[i].lineNumber);
   }
 
   html += '</div>';
 
-  if (lines.length > batchSize) {
+  if (records.length > batchSize) {
     html += `<button class="jsonl-load-more" id="jsonlLoadMore" data-offset="${batchSize}" data-total="${total}">Load more (${batchSize} / ${total})</button>`;
   }
 
@@ -2493,13 +2575,13 @@ document.addEventListener('click', (e) => {
     const tab = getActiveTab();
     if (!tab) return;
 
-    const lines = tab.rawContent.split('\n').filter(l => l.trim());
+    const records = getJSONLRecords(tab.rawContent);
     const container = document.getElementById('jsonlContainer');
     if (!container) return;
 
-    const end = Math.min(offset + batchSize, lines.length);
+    const end = Math.min(offset + batchSize, records.length);
     for (let i = offset; i < end; i++) {
-      container.insertAdjacentHTML('beforeend', renderJSONLEntry(lines[i], i + 1));
+      container.insertAdjacentHTML('beforeend', renderJSONLEntry(records[i].line, records[i].lineNumber));
     }
 
     if (end >= total) {
@@ -2715,7 +2797,7 @@ window.receiveFilesFromApp = function(filenames) {
     btn.className = 'file-item' + (i === 0 ? ' active' : '');
     btn.innerHTML = `
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-      <span class="file-item-name">${name}</span>
+      <span class="file-item-name">${escapeHtml(name)}</span>
     `;
     btn.addEventListener('click', () => {
       $$('.file-item').forEach(f => f.classList.remove('active'));

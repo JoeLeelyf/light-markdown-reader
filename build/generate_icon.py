@@ -191,7 +191,8 @@ def draw_icon(size):
 
 
 def main():
-    iconset_dir = '/Users/liyifei/Downloads/MarkdownReader/build/AppIcon.iconset'
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    iconset_dir = os.path.join(script_dir, 'AppIcon.iconset')
     os.makedirs(iconset_dir, exist_ok=True)
 
     # macOS icon sizes: 16, 32, 64, 128, 256, 512, 1024
@@ -212,15 +213,15 @@ def main():
     cache = {}
     for filename, sz in icon_sizes:
         if sz not in cache:
-            print(f'  Rendering {sz}x{sz}...')
+            print(f'  Rendering {sz}x{sz}...', flush=True)
             cache[sz] = draw_icon(sz)
         png_data = create_png(sz, sz, cache[sz])
         filepath = os.path.join(iconset_dir, filename)
         with open(filepath, 'wb') as f:
             f.write(png_data)
-        print(f'  Created {filename}')
+        print(f'  Created {filename}', flush=True)
 
-    print('Icon set created at:', iconset_dir)
+    print('Icon set created at:', iconset_dir, flush=True)
 
 
 if __name__ == '__main__':

@@ -53,6 +53,7 @@ class MarkViewWindowController: NSObject, WKNavigationDelegate, NSWindowDelegate
         contentController.add(messageHandler, name: "markview")
         config.userContentController = contentController
         config.preferences.setValue(true, forKey: "developerExtrasEnabled")
+        config.setURLSchemeHandler(LocalFileSchemeHandler(), forURLScheme: "localfile")
 
         webView = WKWebView(frame: window.contentView!.bounds, configuration: config)
         webView.autoresizingMask = [.width, .height]
@@ -369,6 +370,7 @@ class MarkViewWindowController: NSObject, WKNavigationDelegate, NSWindowDelegate
             .replacingOccurrences(of: "\"", with: "\\\"")
             .replacingOccurrences(of: "\n", with: "\\n")
             .replacingOccurrences(of: "\r", with: "\\r")
+            .replacingOccurrences(of: "\t", with: "\\t")
     }
 }
 
@@ -413,8 +415,15 @@ class ScriptMessageHandler: NSObject, WKScriptMessageHandler {
                let screenY = body["screenY"] as? Double {
                 let appDel = NSApp.delegate as? AppDelegate
                 // Convert screen coordinates (JS screenY has 0 at top, macOS has 0 at bottom)
-                let screenHeight = NSScreen.main?.frame.height ?? 900
-                let macY = screenHeight - CGFloat(screenY)
+                // Use the screen containing the point, not just the main screen
+                let jsPoint = NSPoint(x: CGFloat(screenX), y: CGFloat(screenY))
+                let targetScreen = NSScreen.screens.first { screen in
+                    let frame = screen.frame
+                    return jsPoint.x >= frame.minX && jsPoint.x <= frame.maxX
+                } ?? NSScreen.main
+                let screenHeight = targetScreen?.frame.height ?? 900
+                let screenOriginY = targetScreen?.frame.origin.y ?? 0
+                let macY = screenOriginY + screenHeight - CGFloat(screenY)
                 let pt = NSPoint(x: CGFloat(screenX), y: macY)
                 appDel?.createNewWindow(withFilename: filename, filePath: filePath, rawContent: rawContent, at: pt)
             }
@@ -426,6 +435,59 @@ class ScriptMessageHandler: NSObject, WKScriptMessageHandler {
             }
         default:
             break
+        }
+    }
+}
+
+// MARK: - Local File Scheme Handler (loads local images for WKWebView)
+
+class LocalFileSchemeHandler: NSObject, WKURLSchemeHandler {
+    func webView(_ webView: WKWebView, start urlSchemeTask: WKURLSchemeTask) {
+        guard let url = urlSchemeTask.request.url,
+              let components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            urlSchemeTask.didFailWithError(URLError(.badURL))
+            return
+        }
+
+        // Convert localfile:///path to /path
+        let filePath = components.path
+        let fileURL = URL(fileURLWithPath: filePath)
+
+        guard FileManager.default.fileExists(atPath: filePath) else {
+            urlSchemeTask.didFailWithError(URLError(.fileDoesNotExist))
+            return
+        }
+
+        do {
+            let data = try Data(contentsOf: fileURL)
+            let mimeType = LocalFileSchemeHandler.mimeType(for: fileURL.pathExtension)
+            let response = URLResponse(url: url, mimeType: mimeType, expectedContentLength: data.count, textEncodingName: nil)
+            urlSchemeTask.didReceive(response)
+            urlSchemeTask.didReceive(data)
+            urlSchemeTask.didFinish()
+        } catch {
+            urlSchemeTask.didFailWithError(error)
+        }
+    }
+
+    func webView(_ webView: WKWebView, stop urlSchemeTask: WKURLSchemeTask) {}
+
+    static func mimeType(for ext: String) -> String {
+        switch ext.lowercased() {
+        case "png": return "image/png"
+        case "jpg", "jpeg": return "image/jpeg"
+        case "gif": return "image/gif"
+        case "svg": return "image/svg+xml"
+        case "webp": return "image/webp"
+        case "bmp": return "image/bmp"
+        case "ico": return "image/x-icon"
+        case "tif", "tiff": return "image/tiff"
+        case "mp4": return "video/mp4"
+        case "webm": return "video/webm"
+        case "mp3": return "audio/mpeg"
+        case "wav": return "audio/wav"
+        case "pdf": return "application/pdf"
+        default: return "application/octet-stream"
         }
     }
 }
