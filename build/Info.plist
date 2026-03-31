@@ -59,6 +59,8 @@
             <array>
                 <string>public.json</string>
                 <string>public.plain-text</string>
+                <string>public.comma-separated-values-text</string>
+                <string>public.tab-separated-values-text</string>
             </array>
             <key>CFBundleTypeExtensions</key>
             <array>
@@ -69,6 +71,24 @@
                 <string>toml</string>
                 <string>yaml</string>
                 <string>yml</string>
+                <string>csv</string>
+                <string>tsv</string>
+            </array>
+        </dict>
+        <dict>
+            <key>CFBundleTypeName</key>
+            <string>Parquet Data File</string>
+            <key>CFBundleTypeRole</key>
+            <string>Viewer</string>
+            <key>LSHandlerRank</key>
+            <string>Alternate</string>
+            <key>LSItemContentTypes</key>
+            <array>
+                <string>com.markview.parquet</string>
+            </array>
+            <key>CFBundleTypeExtensions</key>
+            <array>
+                <string>parquet</string>
             </array>
         </dict>
     </array>
@@ -146,6 +166,40 @@
                 <key>public.filename-extension</key>
                 <array>
                     <string>toml</string>
+                </array>
+            </dict>
+        </dict>
+        <dict>
+            <key>UTTypeIdentifier</key>
+            <string>com.markview.parquet</string>
+            <key>UTTypeDescription</key>
+            <string>Apache Parquet Data File</string>
+            <key>UTTypeConformsTo</key>
+            <array>
+                <string>public.data</string>
+            </array>
+            <key>UTTypeTagSpecification</key>
+            <dict>
+                <key>public.filename-extension</key>
+                <array>
+                    <string>parquet</string>
+                </array>
+            </dict>
+        </dict>
+        <dict>
+            <key>UTTypeIdentifier</key>
+            <string>com.markview.tsv</string>
+            <key>UTTypeDescription</key>
+            <string>Tab-Separated Values</string>
+            <key>UTTypeConformsTo</key>
+            <array>
+                <string>public.plain-text</string>
+            </array>
+            <key>UTTypeTagSpecification</key>
+            <dict>
+                <key>public.filename-extension</key>
+                <array>
+                    <string>tsv</string>
                 </array>
             </dict>
         </dict>

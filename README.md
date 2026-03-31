@@ -1,10 +1,29 @@
 # MarkView
 
-A lightweight, Typora-style Markdown reader for macOS.
+A lightweight, Typora-style local file reader for macOS. Supports Markdown and structured data formats commonly used in ML/AI workflows.
 
 Built with Swift + WKWebView. No Electron, no heavy dependencies — just a native macOS app wrapping a single HTML file.
 
 ![MarkView Demo](asset/demo.png)
+
+## Supported Formats
+
+### Markdown
+Full CommonMark + GFM rendering with code highlighting, LaTeX math, and outline navigation.
+
+### Structured Data
+Tree-view and syntax-highlighted previews with auto-generated outlines.
+
+| Format | Extensions | Features |
+|--------|-----------|----------|
+| JSON | `.json` | Interactive tree view, collapsible nodes, lazy loading for large arrays |
+| JSONL | `.jsonl`, `.ndjson` | Per-record tree view with pagination (100 records/batch) |
+| YAML | `.yaml`, `.yml` | Syntax-highlighted view |
+| TOML | `.toml` | Syntax-highlighted view |
+| XML | `.xml` | Syntax-highlighted view |
+| CSV | `.csv` | Table view with auto-delimiter detection, pagination |
+| TSV | `.tsv` | Table view, pagination |
+| Parquet | `.parquet` | Binary columnar format, table view with type badges, base64 image/video inline preview, pagination |
 
 ## Features
 
@@ -15,15 +34,15 @@ Built with Swift + WKWebView. No Electron, no heavy dependencies — just a nati
 - **Tabs** — Open multiple files simultaneously with a browser-style tab bar; drag tabs to reorder or drag outside the window to detach into a new window
 - **Split View** — Side-by-side reading with resizable panes
 - **Multi-Window** — Each window has its own independent state; create new windows from the menu or by detaching tabs
-- **Outline Sidebar** — Auto-generated table of contents from headings
-- **Folder Browsing** — Open a folder to browse all Markdown files in the sidebar
-- **Source Mode** — Toggle to view raw Markdown source (per-tab)
+- **Outline Sidebar** — Auto-generated table of contents from headings (Markdown) or data structure (JSON/Parquet/CSV)
+- **Folder Browsing** — Open a folder to browse all supported files in the sidebar
+- **Source Mode** — Toggle to view raw source (per-tab)
 - **Focus Mode** — Distraction-free reading
 - **Full-text Search** — Find and highlight text in your document
 - **PDF Export** — Export to paginated A4 PDF (also available via CLI)
 - **Reading Progress** — Remembers scroll position per file and per tab
-- **Drag & Drop** — Drop `.md` files directly onto the window
-- **File Association** — Register as a viewer for `.md`, `.markdown`, `.mdown`, `.mkd`, `.mdx`, `.txt`
+- **Drag & Drop** — Drop supported files directly onto the window
+- **File Association** — Registered as viewer for all supported extensions
 
 ## Keyboard Shortcuts
 

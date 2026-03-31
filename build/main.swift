@@ -110,6 +110,9 @@ class MarkViewWindowController: NSObject, WKNavigationDelegate, NSWindowDelegate
             .init(filenameExtension: "toml")!,
             .init(filenameExtension: "yaml")!,
             .init(filenameExtension: "yml")!,
+            .init(filenameExtension: "parquet")!,
+            .init(filenameExtension: "csv")!,
+            .init(filenameExtension: "tsv")!,
         ]
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
@@ -135,7 +138,7 @@ class MarkViewWindowController: NSObject, WKNavigationDelegate, NSWindowDelegate
 
     func openFolderAt(_ dirURL: URL) {
         let fm = FileManager.default
-        let exts: Set<String> = ["md", "markdown", "mdown", "mkd", "mkdn", "mdx", "txt", "json", "jsonl", "ndjson", "xml", "toml", "yaml", "yml"]
+        let exts: Set<String> = ["md", "markdown", "mdown", "mkd", "mkdn", "mdx", "txt", "json", "jsonl", "ndjson", "xml", "toml", "yaml", "yml", "parquet", "csv", "tsv"]
 
         guard let enumerator = fm.enumerator(at: dirURL, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles, .skipsSubdirectoryDescendants]),
               let files = enumerator.allObjects as? [URL] else { return }
@@ -322,45 +325,81 @@ class MarkViewWindowController: NSObject, WKNavigationDelegate, NSWindowDelegate
 
     // MARK: - Load Markdown File
 
+    static let binaryExtensions: Set<String> = ["parquet"]
+
     func loadMarkdownFile(url: URL) {
         NSLog("loadMarkdownFile: \(url.path), pageLoaded=\(pageLoaded)")
-        do {
-            let content = try String(contentsOf: url, encoding: .utf8)
-            let filename = url.lastPathComponent
-            let filePath = url.path
-            state_currentFile = filename
-            window.title = "\(filename) - MarkView"
+        let filename = url.lastPathComponent
+        let filePath = url.path
+        let ext = url.pathExtension.lowercased()
+        state_currentFile = filename
+        window.title = "\(filename) - MarkView"
 
-            let escaped = content
-                .replacingOccurrences(of: "\\", with: "\\\\")
-                .replacingOccurrences(of: "\"", with: "\\\"")
-                .replacingOccurrences(of: "\n", with: "\\n")
-                .replacingOccurrences(of: "\r", with: "\\r")
-                .replacingOccurrences(of: "\t", with: "\\t")
+        if MarkViewWindowController.binaryExtensions.contains(ext) {
+            // Binary file: read as Data and send base64 to JS
+            do {
+                let data = try Data(contentsOf: url)
+                let base64 = data.base64EncodedString()
+                let js = "loadBinaryFromApp(\"\(escapeJSString(filename))\", \"\(base64)\", \"\(escapeJSString(filePath))\")"
 
-            let js = "loadMarkdownFromApp(\"\(escapeJSString(filename))\", \"\(escaped)\", \"\(escapeJSString(filePath))\")"
-
-            if pageLoaded {
-                webView.evaluateJavaScript(js) { _, error in
-                    if let error = error {
-                        NSLog("JS Error: \(error.localizedDescription)")
-                    }
-                }
-            } else {
-                pendingLoad = { [weak self] in
-                    self?.webView.evaluateJavaScript(js) { _, error in
+                if pageLoaded {
+                    webView.evaluateJavaScript(js) { _, error in
                         if let error = error {
                             NSLog("JS Error: \(error.localizedDescription)")
                         }
                     }
+                } else {
+                    pendingLoad = { [weak self] in
+                        self?.webView.evaluateJavaScript(js) { _, error in
+                            if let error = error {
+                                NSLog("JS Error: \(error.localizedDescription)")
+                            }
+                        }
+                    }
                 }
+            } catch {
+                let alert = NSAlert()
+                alert.messageText = "Cannot open file"
+                alert.informativeText = error.localizedDescription
+                alert.alertStyle = .warning
+                alert.beginSheetModal(for: window, completionHandler: nil)
             }
-        } catch {
-            let alert = NSAlert()
-            alert.messageText = "Cannot open file"
-            alert.informativeText = error.localizedDescription
-            alert.alertStyle = .warning
-            alert.beginSheetModal(for: window, completionHandler: nil)
+        } else {
+            // Text file: read as UTF-8
+            do {
+                let content = try String(contentsOf: url, encoding: .utf8)
+
+                let escaped = content
+                    .replacingOccurrences(of: "\\", with: "\\\\")
+                    .replacingOccurrences(of: "\"", with: "\\\"")
+                    .replacingOccurrences(of: "\n", with: "\\n")
+                    .replacingOccurrences(of: "\r", with: "\\r")
+                    .replacingOccurrences(of: "\t", with: "\\t")
+
+                let js = "loadMarkdownFromApp(\"\(escapeJSString(filename))\", \"\(escaped)\", \"\(escapeJSString(filePath))\")"
+
+                if pageLoaded {
+                    webView.evaluateJavaScript(js) { _, error in
+                        if let error = error {
+                            NSLog("JS Error: \(error.localizedDescription)")
+                        }
+                    }
+                } else {
+                    pendingLoad = { [weak self] in
+                        self?.webView.evaluateJavaScript(js) { _, error in
+                            if let error = error {
+                                NSLog("JS Error: \(error.localizedDescription)")
+                            }
+                        }
+                    }
+                }
+            } catch {
+                let alert = NSAlert()
+                alert.messageText = "Cannot open file"
+                alert.informativeText = error.localizedDescription
+                alert.alertStyle = .warning
+                alert.beginSheetModal(for: window, completionHandler: nil)
+            }
         }
     }
 
@@ -524,7 +563,7 @@ class DragOverlayView: NSView {
             if let urlString = item.string(forType: .fileURL),
                let url = URL(string: urlString) {
                 let ext = url.pathExtension.lowercased()
-                if ["md", "markdown", "mdown", "mkd", "mkdn", "mdx", "txt", "json", "jsonl", "ndjson", "xml", "toml", "yaml", "yml"].contains(ext) {
+                if ["md", "markdown", "mdown", "mkd", "mkdn", "mdx", "txt", "json", "jsonl", "ndjson", "xml", "toml", "yaml", "yml", "parquet", "csv", "tsv"].contains(ext) {
                     windowController?.loadMarkdownFile(url: url)
                     return true
                 }
@@ -539,7 +578,7 @@ class DragOverlayView: NSView {
             if let urlString = item.string(forType: .fileURL),
                let url = URL(string: urlString) {
                 let ext = url.pathExtension.lowercased()
-                if ["md", "markdown", "mdown", "mkd", "mkdn", "mdx", "txt", "json", "jsonl", "ndjson", "xml", "toml", "yaml", "yml"].contains(ext) {
+                if ["md", "markdown", "mdown", "mkd", "mkdn", "mdx", "txt", "json", "jsonl", "ndjson", "xml", "toml", "yaml", "yml", "parquet", "csv", "tsv"].contains(ext) {
                     return true
                 }
             }

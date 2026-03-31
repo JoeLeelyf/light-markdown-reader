@@ -1049,6 +1049,71 @@ body.pdf-export-mode .pane:not(:first-child) { display: none !important; }
   font-size: inherit;
 }
 
+/* Parquet / CSV Table Styles */
+.parquet-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+}
+.parquet-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.parquet-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+.parquet-table th {
+  background: var(--bg-table-header);
+  padding: 8px 12px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 12px;
+  border-bottom: 2px solid var(--border-color);
+  white-space: nowrap;
+}
+.parquet-table th .pq-type {
+  display: block;
+  font-weight: 400;
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+.parquet-table td {
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border-light);
+  max-width: 400px;
+  overflow: hidden;
+  word-wrap: break-word;
+}
+.parquet-table .pq-stripe { background: var(--bg-table-stripe); }
+.parquet-table .pq-rownum {
+  color: var(--text-muted);
+  font-size: 11px;
+  text-align: right;
+  padding-right: 8px;
+  min-width: 36px;
+  user-select: none;
+}
+.pq-null { color: var(--text-muted); font-style: italic; }
+.pq-bool { color: #d63384; }
+.pq-num { color: #0d6efd; }
+.pq-media { max-width: 200px; max-height: 150px; border-radius: 4px; display: block; margin: 4px 0; }
+.pq-truncated { display: inline; }
+.pq-ellipsis { color: var(--text-muted); }
+.pq-expand-btn {
+  background: none;
+  border: none;
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0 4px;
+}
+.pq-expand-btn:hover { text-decoration: underline; }
+
 /* PDF export for data view */
 body.pdf-export-mode .data-view {
   display: block !important;
@@ -1317,7 +1382,7 @@ body.pdf-export-mode .markdown-body p { orphans: 3; widows: 3; }
 </div>
 
 <!-- Hidden file input -->
-<input type="file" id="fileInput" accept=".md,.markdown,.mdown,.mkd,.mkdn,.mdx,.txt,.json,.jsonl,.ndjson,.xml,.toml,.yaml,.yml" style="display:none">
+<input type="file" id="fileInput" accept=".md,.markdown,.mdown,.mkd,.mkdn,.mdx,.txt,.json,.jsonl,.ndjson,.xml,.toml,.yaml,.yml,.parquet,.csv,.tsv" style="display:none">
 <input type="file" id="folderInput" webkitdirectory style="display:none">
 
 <!-- Libraries -->
@@ -1325,6 +1390,7 @@ body.pdf-export-mode .markdown-body p { orphans: 3; widows: 3; }
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5/papaparse.min.js"></script>
 
 <script>
 // ===== State =====
@@ -1450,7 +1516,11 @@ const FORMAT_MAP = {
   'json': 'json', 'jsonl': 'jsonl', 'ndjson': 'jsonl',
   'xml': 'xml', 'toml': 'toml',
   'yaml': 'yaml', 'yml': 'yaml',
+  'parquet': 'parquet',
+  'csv': 'csv', 'tsv': 'tsv',
 };
+
+const BINARY_FORMATS = new Set(['parquet']);
 
 function detectFormat(filename) {
   if (!filename) return 'markdown';
@@ -1460,6 +1530,10 @@ function detectFormat(filename) {
 
 function isStructuredFormat(format) {
   return format && format !== 'markdown';
+}
+
+function isBinaryFormat(format) {
+  return BINARY_FORMATS.has(format);
 }
 
 function toFileURL(filePath) {
@@ -1545,6 +1619,35 @@ function addTab(filename, filePath, content) {
     cachedHTML: null,
     scrollRatio: 0,
     sourceMode: false,
+    binaryData: null,
+    parquetMeta: null,
+  };
+  state.tabs.push(tab);
+  activateTab(tab.id);
+  renderTabBar();
+  return tab;
+}
+
+function addBinaryTab(filename, filePath, arrayBuffer) {
+  if (filePath) {
+    const existing = getTabByFilePath(filePath);
+    if (existing) {
+      activateTab(existing.id);
+      return existing;
+    }
+  }
+
+  const tab = {
+    id: generateId('tab'),
+    filename: filename || 'Untitled',
+    filePath: filePath || null,
+    rawContent: '',
+    format: detectFormat(filename),
+    cachedHTML: null,
+    scrollRatio: 0,
+    sourceMode: false,
+    binaryData: arrayBuffer,
+    parquetMeta: null,
   };
   state.tabs.push(tab);
   activateTab(tab.id);
@@ -1619,24 +1722,52 @@ function activateTab(tabId) {
 
   // Render content
   if (isStructuredFormat(tab.format)) {
+    dom.markdownBody.innerHTML = '';
     dom.markdownBody.style.display = 'none';
     dom.dataView.style.display = 'none';
     dom.welcomeScreen.style.display = 'none';
 
-    if (tab.cachedHTML) {
+    if (tab.format === 'parquet' && tab.binaryData) {
+      // Parquet: async rendering
+      dom.sourceView.querySelector('pre').textContent = '(binary file)';
+      dom.sourceView.classList.toggle('active', false);
+      $('#btnSource').classList.toggle('active', false);
+      if (tab.cachedHTML) {
+        dom.dataView.innerHTML = tab.cachedHTML;
+        dom.dataView.style.display = 'block';
+        updateStructuredStats(tab);
+        buildStructuredOutline(tab);
+      } else {
+        dom.dataView.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-muted)">Loading Parquet file...</div>';
+        dom.dataView.style.display = 'block';
+        renderParquetAsync(tab).then(() => {
+          if (state.activeTabId === tabId) {
+            updateStructuredStats(tab);
+            buildStructuredOutline(tab);
+          }
+        });
+      }
+      setTimeout(() => restoreTabScrollPosition(tabId), 50);
+    } else if (tab.cachedHTML) {
       dom.dataView.innerHTML = tab.cachedHTML;
       dom.dataView.style.display = tab.sourceMode ? 'none' : 'block';
+      dom.sourceView.querySelector('pre').textContent = tab.rawContent;
+      dom.sourceView.classList.toggle('active', tab.sourceMode);
+      $('#btnSource').classList.toggle('active', tab.sourceMode);
+      updateStructuredStats(tab);
+      buildStructuredOutline(tab);
+      setTimeout(() => restoreTabScrollPosition(tabId), 50);
     } else if (tab.rawContent) {
       dom.dataView.innerHTML = renderStructuredData(tab);
       tab.cachedHTML = dom.dataView.innerHTML;
       dom.dataView.style.display = tab.sourceMode ? 'none' : 'block';
+      dom.sourceView.querySelector('pre').textContent = tab.rawContent;
+      dom.sourceView.classList.toggle('active', tab.sourceMode);
+      $('#btnSource').classList.toggle('active', tab.sourceMode);
+      updateStructuredStats(tab);
+      buildStructuredOutline(tab);
+      setTimeout(() => restoreTabScrollPosition(tabId), 50);
     }
-
-    dom.sourceView.querySelector('pre').textContent = tab.rawContent;
-    dom.sourceView.classList.toggle('active', tab.sourceMode);
-    $('#btnSource').classList.toggle('active', tab.sourceMode);
-    updateStructuredStats(tab);
-    setTimeout(() => restoreTabScrollPosition(tabId), 50);
   } else if (tab.cachedHTML) {
     dom.dataView.style.display = 'none';
     dom.markdownBody.innerHTML = tab.cachedHTML;
@@ -1832,22 +1963,9 @@ function updateStats(text) {
 // ===== Scroll Spy for Outline + Reading Progress =====
 let scrollSaveTimeout = null;
 dom.contentArea.addEventListener('scroll', () => {
-  const headings = dom.markdownBody.querySelectorAll('h1,h2,h3,h4,h5,h6');
-  const tocItems = $$('.toc-item');
-  if (headings.length === 0) return;
-
-  let activeIdx = 0;
   const scrollTop = dom.contentArea.scrollTop;
-  headings.forEach((h, i) => {
-    if (h.offsetTop - 80 <= scrollTop) activeIdx = i;
-  });
-  tocItems.forEach(t => t.classList.remove('active'));
-  if (tocItems[activeIdx]) {
-    tocItems[activeIdx].classList.add('active');
-    tocItems[activeIdx].scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  }
 
-  // Save reading progress (debounced)
+  // Save reading progress for ALL formats (debounced)
   if (scrollSaveTimeout) clearTimeout(scrollSaveTimeout);
   scrollSaveTimeout = setTimeout(() => {
     const tab = getActiveTab();
@@ -1858,15 +1976,43 @@ dom.contentArea.addEventListener('scroll', () => {
       if (tab.filePath) ReadingProgress.save(tab.filePath, ratio);
     }
   }, 300);
+
+  // Heading scroll spy only for markdown tabs
+  const activeTab = getActiveTab();
+  if (activeTab && isStructuredFormat(activeTab.format)) return;
+
+  const headings = dom.markdownBody.querySelectorAll('h1,h2,h3,h4,h5,h6');
+  const tocItems = $$('.toc-item');
+  if (headings.length === 0) return;
+
+  let activeIdx = 0;
+  headings.forEach((h, i) => {
+    if (h.offsetTop - 80 <= scrollTop) activeIdx = i;
+  });
+  tocItems.forEach(t => t.classList.remove('active'));
+  if (tocItems[activeIdx]) {
+    tocItems[activeIdx].classList.add('active');
+    tocItems[activeIdx].scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
 });
 
 // ===== File Handling =====
 function openFile(file) {
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    addTab(file.name, null, e.target.result);
-  };
-  reader.readAsText(file);
+  const ext = file.name.split('.').pop().toLowerCase();
+  const format = FORMAT_MAP[ext] || 'markdown';
+  if (isBinaryFormat(format)) {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      addBinaryTab(file.name, null, e.target.result);
+    };
+    reader.readAsArrayBuffer(file);
+  } else {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      addTab(file.name, null, e.target.result);
+    };
+    reader.readAsText(file);
+  }
 }
 
 dom.fileInput.addEventListener('change', (e) => {
@@ -1876,7 +2022,7 @@ dom.fileInput.addEventListener('change', (e) => {
 
 dom.folderInput.addEventListener('change', (e) => {
   const files = Array.from(e.target.files).filter(f =>
-    /\.(md|markdown|mdown|mkd|mkdn|mdx|txt|json|jsonl|ndjson|xml|toml|yaml|yml)$/i.test(f.name)
+    /\.(md|markdown|mdown|mkd|mkdn|mdx|txt|json|jsonl|ndjson|xml|toml|yaml|yml|parquet|csv|tsv)$/i.test(f.name)
   ).sort((a, b) => a.name.localeCompare(b.name));
 
   state.files = files;
@@ -1934,7 +2080,7 @@ document.addEventListener('drop', (e) => {
   dom.dropzone.classList.remove('active');
   const files = e.dataTransfer.files;
   if (files.length > 0) {
-    const mdFile = Array.from(files).find(f => /\.(md|markdown|mdown|mkd|txt|mdx|json|jsonl|ndjson|xml|toml|yaml|yml)$/i.test(f.name));
+    const mdFile = Array.from(files).find(f => /\.(md|markdown|mdown|mkd|txt|mdx|json|jsonl|ndjson|xml|toml|yaml|yml|parquet|csv|tsv)$/i.test(f.name));
     if (mdFile) openFile(mdFile);
   }
 });
@@ -2230,7 +2376,16 @@ function renderTabInPane(tab, paneEl) {
 
   if (isStructuredFormat(tab.format)) {
     mdBody.style.display = 'none';
-    if (tab.cachedHTML) {
+    if (tab.format === 'parquet' && tab.binaryData) {
+      if (tab.cachedHTML) {
+        dataView.innerHTML = tab.cachedHTML;
+      } else {
+        dataView.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-muted)">Loading Parquet...</div>';
+        renderParquetAsync(tab).then(() => {
+          if (tab.cachedHTML) dataView.innerHTML = tab.cachedHTML;
+        });
+      }
+    } else if (tab.cachedHTML) {
       dataView.innerHTML = tab.cachedHTML;
     } else if (tab.rawContent) {
       dataView.innerHTML = renderStructuredData(tab);
@@ -2318,6 +2473,9 @@ function renderStructuredData(tab) {
       case 'xml': return renderXML(tab.rawContent);
       case 'yaml': return renderHighlightedData(tab.rawContent, 'yaml', 'YAML');
       case 'toml': return renderHighlightedData(tab.rawContent, 'ini', 'TOML');
+      case 'csv': return renderCSV(tab.rawContent, 'csv');
+      case 'tsv': return renderCSV(tab.rawContent, 'tsv');
+      case 'parquet': return null; // handled async
       default: return null;
     }
   } catch (e) {
@@ -2337,11 +2495,53 @@ function renderJSON(content) {
 
   const data = JSON.parse(content);
   const stats = getJSONStats(data);
+  const batchSize = 100;
 
   let html = `<div class="data-view-header"><span class="data-format-badge">JSON</span><span class="data-view-stats">${escapeHtml(stats)}</span></div>`;
-  html += '<div class="json-tree">';
-  html += jsonToTree(data, '', 0, true);
-  html += '</div>';
+
+  // Lazy-load top-level arrays/objects with >100 items
+  const isLargeArray = Array.isArray(data) && data.length > batchSize;
+  const isLargeObject = !Array.isArray(data) && data && typeof data === 'object' && Object.keys(data).length > batchSize;
+
+  if (isLargeArray) {
+    const total = data.length;
+    const initialCount = Math.min(batchSize, total);
+    html += '<div class="json-tree"><details class="json-node" open><summary>';
+    html += `<span class="json-bracket">[</span><span class="json-number">${total}</span><span class="json-bracket">]</span>`;
+    const preview = data.slice(0, 3).map(v => jsonPreview(v)).join(', ');
+    const suffix = total > 3 ? ', …' : '';
+    html += `<span class="json-preview">${preview}${suffix}</span></summary>`;
+    html += '<div class="json-children" id="jsonLazyContainer">';
+    for (let i = 0; i < initialCount; i++) {
+      html += jsonToTree(data[i], i, 1, false, 'index');
+    }
+    html += '</div></details></div>';
+    if (total > batchSize) {
+      html += `<button class="jsonl-load-more" id="jsonLoadMore" data-offset="${batchSize}" data-total="${total}" data-kind="array">Load more (${batchSize} / ${total})</button>`;
+    }
+  } else if (isLargeObject) {
+    const entries = Object.entries(data);
+    const total = entries.length;
+    const initialCount = Math.min(batchSize, total);
+    html += '<div class="json-tree"><details class="json-node" open><summary>';
+    html += `<span class="json-bracket">{</span><span class="json-number">${total}</span><span class="json-bracket">}</span>`;
+    const previewKeys = entries.slice(0, 3).map(([k]) => `"${escapeHtml(k)}"`).join(', ');
+    const suffix = total > 3 ? ', …' : '';
+    html += `<span class="json-preview">${previewKeys}${suffix}</span></summary>`;
+    html += '<div class="json-children" id="jsonLazyContainer">';
+    for (let i = 0; i < initialCount; i++) {
+      html += jsonToTree(entries[i][1], entries[i][0], 1, false);
+    }
+    html += '</div></details></div>';
+    if (total > batchSize) {
+      html += `<button class="jsonl-load-more" id="jsonLoadMore" data-offset="${batchSize}" data-total="${total}" data-kind="object">Load more (${batchSize} / ${total})</button>`;
+    }
+  } else {
+    html += '<div class="json-tree">';
+    html += jsonToTree(data, '', 0, true);
+    html += '</div>';
+  }
+
   return html;
 }
 
@@ -2556,6 +2756,16 @@ function updateStructuredStats(tab) {
     dom.statReadTime.textContent = '';
     return;
   }
+  if (tab.format === 'parquet') {
+    const size = tab.binaryData ? tab.binaryData.byteLength : 0;
+    const sizeStr = size > 1024 * 1024 ? (size / (1024 * 1024)).toFixed(1) + ' MB' :
+                    size > 1024 ? (size / 1024).toFixed(1) + ' KB' : size + ' B';
+    dom.statWords.textContent = 'PARQUET';
+    dom.statChars.textContent = sizeStr;
+    dom.statLines.textContent = tab.parquetMeta ? `${tab.parquetMeta.totalRows} rows` : '';
+    dom.statReadTime.textContent = tab.parquetMeta ? `${tab.parquetMeta.columns.length} cols` : '';
+    return;
+  }
   const lines = tab.rawContent.split('\n').length;
   const chars = tab.rawContent.length;
   dom.statWords.textContent = tab.format.toUpperCase();
@@ -2592,6 +2802,280 @@ document.addEventListener('click', (e) => {
     }
   }
 });
+
+// JSON "Load more" button handler
+document.addEventListener('click', (e) => {
+  if (e.target && e.target.id === 'jsonLoadMore') {
+    const btn = e.target;
+    const offset = parseInt(btn.dataset.offset);
+    const total = parseInt(btn.dataset.total);
+    const kind = btn.dataset.kind;
+    const batchSize = 100;
+
+    const tab = getActiveTab();
+    if (!tab) return;
+
+    const data = JSON.parse(tab.rawContent);
+    const container = document.getElementById('jsonLazyContainer');
+    if (!container) return;
+
+    const end = Math.min(offset + batchSize, total);
+    let fragment = '';
+
+    if (kind === 'array') {
+      for (let i = offset; i < end; i++) {
+        fragment += jsonToTree(data[i], i, 1, false, 'index');
+      }
+    } else {
+      const entries = Object.entries(data);
+      for (let i = offset; i < end; i++) {
+        fragment += jsonToTree(entries[i][1], entries[i][0], 1, false);
+      }
+    }
+
+    container.insertAdjacentHTML('beforeend', fragment);
+
+    if (end >= total) {
+      btn.remove();
+    } else {
+      btn.dataset.offset = String(end);
+      btn.textContent = `Load more (${end} / ${total})`;
+    }
+
+    // Update cached HTML
+    tab.cachedHTML = dom.dataView.innerHTML;
+  }
+});
+
+// ===== Structured Data Outline =====
+function addOutlineItem(container, text, level, isLabel) {
+  const btn = document.createElement('button');
+  btn.className = 'toc-item';
+  btn.dataset.level = level;
+  if (isLabel) {
+    btn.style.color = 'var(--text-muted)';
+    btn.style.fontSize = '11px';
+    btn.style.cursor = 'default';
+  }
+  btn.textContent = text;
+  container.appendChild(btn);
+}
+
+function buildStructuredOutline(tab) {
+  dom.outlinePanel.innerHTML = '';
+  if (!tab) return;
+
+  const format = tab.format;
+
+  // For parquet, use binary size; for others, use rawContent
+  if (format === 'parquet') {
+    const size = tab.binaryData ? tab.binaryData.byteLength : 0;
+    const sizeStr = size > 1024 * 1024 ? (size / (1024 * 1024)).toFixed(1) + ' MB' :
+                    size > 1024 ? (size / 1024).toFixed(1) + ' KB' : size + ' B';
+    const header = document.createElement('div');
+    header.style.cssText = 'padding:12px;border-bottom:1px solid var(--border-light);';
+    const rowCount = tab.parquetMeta ? tab.parquetMeta.totalRows : '?';
+    header.innerHTML = `<span style="display:inline-block;padding:2px 8px;border-radius:4px;background:var(--accent);color:#fff;font-size:11px;font-weight:600;margin-bottom:6px">PARQUET</span>` +
+      `<div style="font-size:12px;color:var(--text-muted)">${escapeHtml(sizeStr)} · ${rowCount} rows</div>`;
+    dom.outlinePanel.appendChild(header);
+    buildParquetOutline(tab);
+    return;
+  }
+
+  if (!tab.rawContent) return;
+  const size = tab.rawContent.length;
+  const lines = tab.rawContent.split('\n').length;
+  const sizeStr = size > 1024 * 1024 ? (size / (1024 * 1024)).toFixed(1) + ' MB' :
+                  size > 1024 ? (size / 1024).toFixed(1) + ' KB' : size + ' B';
+
+  // Header
+  const header = document.createElement('div');
+  header.style.cssText = 'padding:12px;border-bottom:1px solid var(--border-light);';
+  header.innerHTML = `<span style="display:inline-block;padding:2px 8px;border-radius:4px;background:var(--accent);color:#fff;font-size:11px;font-weight:600;margin-bottom:6px">${escapeHtml(format.toUpperCase())}</span>` +
+    `<div style="font-size:12px;color:var(--text-muted)">${escapeHtml(sizeStr)} · ${lines} lines</div>`;
+  dom.outlinePanel.appendChild(header);
+
+  try {
+    switch (format) {
+      case 'json': buildJSONOutline(tab); break;
+      case 'jsonl': buildJSONLOutline(tab); break;
+      case 'xml': buildXMLOutline(tab); break;
+      case 'yaml': buildYAMLOutline(tab); break;
+      case 'toml': buildTOMLOutline(tab); break;
+      case 'csv': case 'tsv': buildCSVOutline(tab); break;
+      default:
+        addOutlineItem(dom.outlinePanel, 'No structure available', 1, true);
+    }
+  } catch (e) {
+    addOutlineItem(dom.outlinePanel, 'Could not parse structure', 1, true);
+  }
+}
+
+function buildJSONOutline(tab) {
+  const data = JSON.parse(tab.rawContent);
+
+  if (Array.isArray(data)) {
+    addOutlineItem(dom.outlinePanel, `Array [${data.length} items]`, 1, false);
+    // Sample first item for key structure
+    if (data.length > 0 && data[0] && typeof data[0] === 'object' && !Array.isArray(data[0])) {
+      addOutlineItem(dom.outlinePanel, 'Item structure:', 2, true);
+      const keys = Object.keys(data[0]);
+      keys.slice(0, 20).forEach(k => {
+        const val = data[0][k];
+        const type = val === null ? 'null' : Array.isArray(val) ? `array[${val.length}]` : typeof val;
+        addOutlineItem(dom.outlinePanel, `${k}: ${type}`, 3, false);
+      });
+      if (keys.length > 20) {
+        addOutlineItem(dom.outlinePanel, `… ${keys.length - 20} more keys`, 3, true);
+      }
+    }
+  } else if (data && typeof data === 'object') {
+    addOutlineItem(dom.outlinePanel, `Object {${Object.keys(data).length} keys}`, 1, false);
+    buildJSONObjectOutline(data, 1, 0);
+  } else {
+    addOutlineItem(dom.outlinePanel, `Value: ${typeof data}`, 1, false);
+  }
+}
+
+function buildJSONObjectOutline(obj, level, depth) {
+  if (depth >= 4) return;
+  const entries = Object.entries(obj);
+  entries.slice(0, 20).forEach(([k, v]) => {
+    if (v === null) {
+      addOutlineItem(dom.outlinePanel, `${k}: null`, level + 1, false);
+    } else if (Array.isArray(v)) {
+      addOutlineItem(dom.outlinePanel, `${k}: array[${v.length}]`, level + 1, false);
+    } else if (typeof v === 'object') {
+      addOutlineItem(dom.outlinePanel, `${k}: {${Object.keys(v).length}}`, level + 1, false);
+      buildJSONObjectOutline(v, level + 1, depth + 1);
+    } else {
+      addOutlineItem(dom.outlinePanel, `${k}: ${typeof v}`, level + 1, false);
+    }
+  });
+  if (entries.length > 20) {
+    addOutlineItem(dom.outlinePanel, `… ${entries.length - 20} more keys`, level + 1, true);
+  }
+}
+
+function buildJSONLOutline(tab) {
+  const records = getJSONLRecords(tab.rawContent);
+  addOutlineItem(dom.outlinePanel, `${records.length} entries`, 1, false);
+
+  // Show column names from first record
+  if (records.length > 0) {
+    try {
+      const first = JSON.parse(records[0].line);
+      if (first && typeof first === 'object' && !Array.isArray(first)) {
+        addOutlineItem(dom.outlinePanel, 'Columns:', 2, true);
+        const keys = Object.keys(first);
+        keys.slice(0, 20).forEach(k => {
+          const val = first[k];
+          const type = val === null ? 'null' : Array.isArray(val) ? 'array' : typeof val;
+          addOutlineItem(dom.outlinePanel, `${k}: ${type}`, 3, false);
+        });
+        if (keys.length > 20) {
+          addOutlineItem(dom.outlinePanel, `… ${keys.length - 20} more`, 3, true);
+        }
+      }
+    } catch (e) { /* ignore parse errors */ }
+  }
+}
+
+function buildXMLOutline(tab) {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(tab.rawContent, 'text/xml');
+  const parseError = doc.querySelector('parsererror');
+  if (parseError) {
+    addOutlineItem(dom.outlinePanel, 'Parse error', 1, true);
+    return;
+  }
+
+  function walkXML(el, level, depth) {
+    if (depth >= 4) return;
+    const children = Array.from(el.children);
+    // Group by tag name
+    const tagCounts = {};
+    children.forEach(c => {
+      tagCounts[c.tagName] = (tagCounts[c.tagName] || 0) + 1;
+    });
+    const shown = new Set();
+    children.forEach(c => {
+      const tag = c.tagName;
+      if (shown.has(tag)) return;
+      shown.add(tag);
+      const count = tagCounts[tag];
+      const label = count > 1 ? `<${tag}> (${count})` : `<${tag}>`;
+      addOutlineItem(dom.outlinePanel, label, level, false);
+      // Recurse into first instance
+      if (c.children.length > 0) {
+        walkXML(c, level + 1, depth + 1);
+      }
+    });
+  }
+
+  const root = doc.documentElement;
+  addOutlineItem(dom.outlinePanel, `<${root.tagName}>`, 1, false);
+  walkXML(root, 2, 0);
+}
+
+function buildYAMLOutline(tab) {
+  const lines = tab.rawContent.split('\n');
+  const topKeys = [];
+  for (const line of lines) {
+    const match = line.match(/^([a-zA-Z_][\w-]*)\s*:/);
+    if (match) topKeys.push(match[1]);
+  }
+  if (topKeys.length === 0) {
+    addOutlineItem(dom.outlinePanel, 'No top-level keys', 1, true);
+    return;
+  }
+  addOutlineItem(dom.outlinePanel, `${topKeys.length} top-level keys`, 1, false);
+  topKeys.slice(0, 30).forEach(k => {
+    addOutlineItem(dom.outlinePanel, k, 2, false);
+  });
+  if (topKeys.length > 30) {
+    addOutlineItem(dom.outlinePanel, `… ${topKeys.length - 30} more`, 2, true);
+  }
+}
+
+function buildTOMLOutline(tab) {
+  const lines = tab.rawContent.split('\n');
+  const sections = [];
+  const topKeys = [];
+  let currentSection = null;
+
+  for (const line of lines) {
+    const sectionMatch = line.match(/^\s*\[([^\]]+)\]/);
+    if (sectionMatch) {
+      currentSection = sectionMatch[1];
+      sections.push(currentSection);
+      continue;
+    }
+    if (!currentSection) {
+      const keyMatch = line.match(/^([a-zA-Z_][\w-]*)\s*=/);
+      if (keyMatch) topKeys.push(keyMatch[1]);
+    }
+  }
+
+  if (topKeys.length > 0) {
+    addOutlineItem(dom.outlinePanel, 'Top-level keys', 1, true);
+    topKeys.slice(0, 15).forEach(k => {
+      addOutlineItem(dom.outlinePanel, k, 2, false);
+    });
+  }
+  if (sections.length > 0) {
+    addOutlineItem(dom.outlinePanel, `${sections.length} sections`, 1, false);
+    sections.slice(0, 30).forEach(s => {
+      addOutlineItem(dom.outlinePanel, `[${s}]`, 2, false);
+    });
+    if (sections.length > 30) {
+      addOutlineItem(dom.outlinePanel, `… ${sections.length - 30} more`, 2, true);
+    }
+  }
+  if (topKeys.length === 0 && sections.length === 0) {
+    addOutlineItem(dom.outlinePanel, 'No structure found', 1, true);
+  }
+}
 
 function buildOutlineFromElement(el) {
   const headings = el.querySelectorAll('h1,h2,h3,h4,h5,h6');
@@ -2667,6 +3151,311 @@ document.addEventListener('keydown', (e) => {
     if (state.focusMode) { $('#btnFocus').click(); }
   }
 });
+
+// ===== Parquet Rendering =====
+
+function formatParquetCellValue(val) {
+  if (val === null || val === undefined) return '<span class="pq-null">null</span>';
+  if (typeof val === 'boolean') return `<span class="pq-bool">${val}</span>`;
+  if (typeof val === 'number' || typeof val === 'bigint') return `<span class="pq-num">${val}</span>`;
+  const str = String(val);
+  // Base64 image detection
+  if (/^data:image\/[^;]+;base64,/.test(str)) {
+    return `<img class="pq-media" src="${escapeHtml(str)}" loading="lazy">`;
+  }
+  if (/^data:video\/[^;]+;base64,/.test(str)) {
+    return `<video class="pq-media" controls src="${escapeHtml(str)}"></video>`;
+  }
+  // Auto-detect raw base64 PNG/JPEG
+  if (/^iVBORw0K/.test(str) && str.length > 100) {
+    return `<img class="pq-media" src="data:image/png;base64,${escapeHtml(str)}" loading="lazy">`;
+  }
+  if (/^\/9j\//.test(str) && str.length > 100) {
+    return `<img class="pq-media" src="data:image/jpeg;base64,${escapeHtml(str)}" loading="lazy">`;
+  }
+  // Long text truncation
+  if (str.length > 200) {
+    const id = 'pqcell_' + Math.random().toString(36).slice(2);
+    return `<span id="${id}" class="pq-truncated">${escapeHtml(str.slice(0, 200))}<span class="pq-ellipsis">… <button class="pq-expand-btn" onclick="document.getElementById('${id}').innerHTML=this.parentElement.parentElement.dataset.full;return false">expand</button></span></span>`;
+  }
+  return escapeHtml(str);
+}
+
+async function renderParquetAsync(tab) {
+  if (!tab.binaryData) return;
+  try {
+    const { parquetMetadata, parquetReadObjects } = await getHyparquet();
+    const compressors = await getHyparquetCompressors();
+    const metadata = parquetMetadata(tab.binaryData);
+    const totalRows = Number(metadata.num_rows);
+    const columns = metadata.schema.filter(s => s.name !== 'schema').map(s => ({
+      name: s.name,
+      type: s.converted_type || s.type || 'UNKNOWN'
+    }));
+    tab.parquetMeta = { totalRows, columns, metadata };
+
+    const batchSize = 100;
+    const rowEnd = Math.min(batchSize, totalRows);
+    const rows = await parquetReadObjects({
+      file: tab.binaryData,
+      metadata,
+      rowStart: 0,
+      rowEnd,
+      compressors,
+    });
+
+    let html = `<div class="data-view-header"><span class="data-format-badge">PARQUET</span><span class="data-view-stats">${totalRows} rows · ${columns.length} columns</span></div>`;
+    html += '<div class="parquet-table-wrap"><table class="parquet-table"><thead><tr><th class="pq-rownum">#</th>';
+    for (const col of columns) {
+      html += `<th>${escapeHtml(col.name)}<span class="pq-type">${escapeHtml(String(col.type))}</span></th>`;
+    }
+    html += '</tr></thead><tbody id="parquetTableBody">';
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      html += `<tr class="${i % 2 ? 'pq-stripe' : ''}"><td class="pq-rownum">${i}</td>`;
+      for (const col of columns) {
+        const val = row[col.name];
+        const cellHtml = formatParquetCellValue(val);
+        const escaped = typeof val === 'string' && val.length > 200 ? ` data-full="${escapeHtml(String(val))}"` : '';
+        html += `<td${escaped}>${cellHtml}</td>`;
+      }
+      html += '</tr>';
+    }
+    html += '</tbody></table></div>';
+
+    if (rowEnd < totalRows) {
+      html += `<div style="text-align:center;padding:16px"><button id="parquetLoadMore" class="jsonl-load-more" data-offset="${rowEnd}" data-total="${totalRows}">Load more (${rowEnd} of ${totalRows} rows)</button></div>`;
+    }
+
+    tab.cachedHTML = html;
+    if (state.activeTabId === tab.id) {
+      dom.dataView.innerHTML = html;
+      dom.dataView.style.display = 'block';
+    }
+  } catch (e) {
+    const errorHtml = `<div style="color:var(--text-secondary);padding:20px;"><p><strong>Failed to parse Parquet:</strong> ${escapeHtml(e.message)}</p></div>`;
+    tab.cachedHTML = errorHtml;
+    if (state.activeTabId === tab.id) {
+      dom.dataView.innerHTML = errorHtml;
+      dom.dataView.style.display = 'block';
+    }
+  }
+}
+
+let _hyparquetCache = null;
+let _compressorsCache = null;
+
+async function getHyparquet() {
+  if (_hyparquetCache) return _hyparquetCache;
+  _hyparquetCache = await import('https://cdn.jsdelivr.net/npm/hyparquet/src/index.js');
+  return _hyparquetCache;
+}
+
+async function getHyparquetCompressors() {
+  if (_compressorsCache) return _compressorsCache;
+  try {
+    const mod = await import('https://cdn.jsdelivr.net/npm/hyparquet-compressors/src/index.js');
+    _compressorsCache = mod.compressors;
+    return _compressorsCache;
+  } catch (e) {
+    // compressors not available in browser (bare module specifiers) — snappy still works built-in
+    return undefined;
+  }
+}
+
+// Parquet "Load more" button handler
+document.addEventListener('click', (e) => {
+  if (e.target && e.target.id === 'parquetLoadMore') {
+    const btn = e.target;
+    const offset = parseInt(btn.dataset.offset);
+    const total = parseInt(btn.dataset.total);
+    const batchSize = 100;
+
+    const tab = getActiveTab();
+    if (!tab || !tab.binaryData || !tab.parquetMeta) return;
+
+    btn.textContent = 'Loading...';
+    btn.disabled = true;
+
+    (async () => {
+      try {
+        const { parquetReadObjects } = await getHyparquet();
+        const compressors = await getHyparquetCompressors();
+        const rowEnd = Math.min(offset + batchSize, total);
+        const rows = await parquetReadObjects({
+          file: tab.binaryData,
+          metadata: tab.parquetMeta.metadata,
+          rowStart: offset,
+          rowEnd,
+          compressors,
+        });
+
+        const tbody = document.getElementById('parquetTableBody');
+        if (!tbody) return;
+        const columns = tab.parquetMeta.columns;
+        let html = '';
+        for (let i = 0; i < rows.length; i++) {
+          const row = rows[i];
+          const rowIdx = offset + i;
+          html += `<tr class="${rowIdx % 2 ? 'pq-stripe' : ''}"><td class="pq-rownum">${rowIdx}</td>`;
+          for (const col of columns) {
+            const val = row[col.name];
+            const cellHtml = formatParquetCellValue(val);
+            const escaped = typeof val === 'string' && val.length > 200 ? ` data-full="${escapeHtml(String(val))}"` : '';
+            html += `<td${escaped}>${cellHtml}</td>`;
+          }
+          html += '</tr>';
+        }
+        tbody.insertAdjacentHTML('beforeend', html);
+
+        if (rowEnd < total) {
+          btn.dataset.offset = rowEnd;
+          btn.textContent = `Load more (${rowEnd} of ${total} rows)`;
+          btn.disabled = false;
+        } else {
+          btn.parentElement.remove();
+        }
+
+        // Update cached HTML
+        tab.cachedHTML = dom.dataView.innerHTML;
+      } catch (err) {
+        btn.textContent = 'Error: ' + err.message;
+      }
+    })();
+  }
+});
+
+function buildParquetOutline(tab) {
+  if (!tab.parquetMeta) {
+    addOutlineItem(dom.outlinePanel, 'Loading...', 1, true);
+    return;
+  }
+  const { totalRows, columns } = tab.parquetMeta;
+  addOutlineItem(dom.outlinePanel, `${totalRows} rows`, 1, false);
+  addOutlineItem(dom.outlinePanel, `${columns.length} columns`, 1, true);
+  columns.forEach(col => {
+    addOutlineItem(dom.outlinePanel, `${col.name} (${col.type})`, 2, false);
+  });
+}
+
+// ===== CSV/TSV Rendering =====
+
+function renderCSV(content, format) {
+  const delimiter = format === 'tsv' ? '\t' : undefined; // Papa Parse auto-detects for CSV
+  const parseConfig = { header: true, skipEmptyLines: true, dynamicTyping: true };
+  if (delimiter) parseConfig.delimiter = delimiter;
+  const result = Papa.parse(content, parseConfig);
+  const fields = result.meta.fields || [];
+  const data = result.data;
+  const totalRows = data.length;
+  const batchSize = 100;
+  const initialCount = Math.min(batchSize, totalRows);
+
+  let html = `<div class="data-view-header"><span class="data-format-badge">${format.toUpperCase()}</span><span class="data-view-stats">${totalRows} rows · ${fields.length} columns</span></div>`;
+  html += '<div class="parquet-table-wrap"><table class="parquet-table"><thead><tr><th class="pq-rownum">#</th>';
+  for (const f of fields) {
+    html += `<th>${escapeHtml(f)}</th>`;
+  }
+  html += '</tr></thead><tbody id="csvTableBody">';
+  for (let i = 0; i < initialCount; i++) {
+    const row = data[i];
+    html += `<tr class="${i % 2 ? 'pq-stripe' : ''}"><td class="pq-rownum">${i}</td>`;
+    for (const f of fields) {
+      const val = row[f];
+      html += `<td>${formatCSVCellValue(val)}</td>`;
+    }
+    html += '</tr>';
+  }
+  html += '</tbody></table></div>';
+
+  if (initialCount < totalRows) {
+    html += `<div style="text-align:center;padding:16px"><button id="csvLoadMore" class="jsonl-load-more" data-offset="${initialCount}" data-total="${totalRows}">Load more (${initialCount} of ${totalRows} rows)</button></div>`;
+  }
+
+  return html;
+}
+
+function formatCSVCellValue(val) {
+  if (val === null || val === undefined || val === '') return '<span class="pq-null">null</span>';
+  if (typeof val === 'boolean') return `<span class="pq-bool">${val}</span>`;
+  if (typeof val === 'number') return `<span class="pq-num">${val}</span>`;
+  const str = String(val);
+  // Base64 image detection (same as parquet)
+  if (/^data:image\/[^;]+;base64,/.test(str)) {
+    return `<img class="pq-media" src="${escapeHtml(str)}" loading="lazy">`;
+  }
+  if (/^iVBORw0K/.test(str) && str.length > 100) {
+    return `<img class="pq-media" src="data:image/png;base64,${escapeHtml(str)}" loading="lazy">`;
+  }
+  if (/^\/9j\//.test(str) && str.length > 100) {
+    return `<img class="pq-media" src="data:image/jpeg;base64,${escapeHtml(str)}" loading="lazy">`;
+  }
+  if (str.length > 200) {
+    const id = 'csvcell_' + Math.random().toString(36).slice(2);
+    return `<span id="${id}" class="pq-truncated">${escapeHtml(str.slice(0, 200))}<span class="pq-ellipsis">… <button class="pq-expand-btn" onclick="document.getElementById('${id}').innerHTML=this.parentElement.parentElement.dataset.full;return false">expand</button></span></span>`;
+  }
+  return escapeHtml(str);
+}
+
+// CSV "Load more" button handler
+document.addEventListener('click', (e) => {
+  if (e.target && e.target.id === 'csvLoadMore') {
+    const btn = e.target;
+    const offset = parseInt(btn.dataset.offset);
+    const total = parseInt(btn.dataset.total);
+    const batchSize = 100;
+
+    const tab = getActiveTab();
+    if (!tab || !tab.rawContent) return;
+
+    const delimiter = tab.format === 'tsv' ? '\t' : undefined;
+    const parseConfig = { header: true, skipEmptyLines: true, dynamicTyping: true };
+    if (delimiter) parseConfig.delimiter = delimiter;
+    const result = Papa.parse(tab.rawContent, parseConfig);
+    const fields = result.meta.fields || [];
+    const data = result.data;
+    const rowEnd = Math.min(offset + batchSize, total);
+
+    const tbody = document.getElementById('csvTableBody');
+    if (!tbody) return;
+    let html = '';
+    for (let i = offset; i < rowEnd; i++) {
+      const row = data[i];
+      html += `<tr class="${i % 2 ? 'pq-stripe' : ''}"><td class="pq-rownum">${i}</td>`;
+      for (const f of fields) {
+        const val = row[f];
+        html += `<td>${formatCSVCellValue(val)}</td>`;
+      }
+      html += '</tr>';
+    }
+    tbody.insertAdjacentHTML('beforeend', html);
+
+    if (rowEnd < total) {
+      btn.dataset.offset = rowEnd;
+      btn.textContent = `Load more (${rowEnd} of ${total} rows)`;
+    } else {
+      btn.parentElement.remove();
+    }
+
+    // Update cached HTML
+    tab.cachedHTML = dom.dataView.innerHTML;
+  }
+});
+
+function buildCSVOutline(tab) {
+  if (!tab.rawContent) return;
+  const delimiter = tab.format === 'tsv' ? '\t' : undefined;
+  const parseConfig = { header: true, skipEmptyLines: true, preview: 1 };
+  if (delimiter) parseConfig.delimiter = delimiter;
+  const result = Papa.parse(tab.rawContent, parseConfig);
+  const fields = result.meta.fields || [];
+  const totalRows = tab.rawContent.split('\n').filter(l => l.trim()).length - 1;
+  addOutlineItem(dom.outlinePanel, `~${totalRows} rows`, 1, false);
+  addOutlineItem(dom.outlinePanel, `${fields.length} columns`, 1, true);
+  fields.forEach(f => {
+    addOutlineItem(dom.outlinePanel, f, 2, false);
+  });
+}
 
 // ===== Init =====
 applyTheme();
@@ -2787,6 +3576,14 @@ $$
 // Called from Swift to load a markdown file
 window.loadMarkdownFromApp = function(filename, content, filePath) {
   addTab(filename, filePath || filename, content);
+};
+
+// Called from Swift to load a binary file (e.g. Parquet)
+window.loadBinaryFromApp = function(filename, base64data, filePath) {
+  const binaryStr = atob(base64data);
+  const bytes = new Uint8Array(binaryStr.length);
+  for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
+  addBinaryTab(filename, filePath || filename, bytes.buffer);
 };
 
 // Called from Swift to populate sidebar file list after opening a folder
