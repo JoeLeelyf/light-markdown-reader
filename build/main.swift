@@ -445,6 +445,15 @@ class ScriptMessageHandler: NSObject, WKScriptMessageHandler {
             }
         case "exportPDF":
             windowController?.exportPDF()
+        case "saveFile":
+            if let filePath = body["filePath"] as? String,
+               let content = body["content"] as? String {
+                do {
+                    try content.write(toFile: filePath, atomically: true, encoding: .utf8)
+                } catch {
+                    NSLog("FView: saveFile failed: \(error)")
+                }
+            }
         case "detachTab":
             // Tab dragged out — create new window with this tab's content
             if let filename = body["filename"] as? String,
