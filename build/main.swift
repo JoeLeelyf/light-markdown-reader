@@ -3,7 +3,7 @@ import WebKit
 
 // MARK: - Window Controller (per-window state)
 
-class MarkViewWindowController: NSObject, WKNavigationDelegate, NSWindowDelegate {
+class FViewWindowController: NSObject, WKNavigationDelegate, NSWindowDelegate {
     var window: NSWindow!
     var webView: WKWebView!
     var messageHandler: ScriptMessageHandler!
@@ -41,7 +41,7 @@ class MarkViewWindowController: NSObject, WKNavigationDelegate, NSWindowDelegate
             backing: .buffered,
             defer: false
         )
-        window.title = "MarkView"
+        window.title = "FView"
         window.minSize = NSSize(width: 600, height: 400)
         window.isReleasedWhenClosed = false
         window.delegate = self
@@ -50,7 +50,7 @@ class MarkViewWindowController: NSObject, WKNavigationDelegate, NSWindowDelegate
         let config = WKWebViewConfiguration()
         let contentController = WKUserContentController()
         messageHandler = ScriptMessageHandler(windowController: self)
-        contentController.add(messageHandler, name: "markview")
+        contentController.add(messageHandler, name: "fview")
         config.userContentController = contentController
         config.preferences.setValue(true, forKey: "developerExtrasEnabled")
         config.setURLSchemeHandler(LocalFileSchemeHandler(), forURLScheme: "localfile")
@@ -259,8 +259,8 @@ class MarkViewWindowController: NSObject, WKNavigationDelegate, NSWindowDelegate
         let sourceRect = sourcePage.getBoxRect(.mediaBox)
         let sourceWidth = sourceRect.width
         let sourceHeight = sourceRect.height
-        let pageHeight = MarkViewWindowController.a4Height
-        let pageWidth = MarkViewWindowController.a4Width
+        let pageHeight = FViewWindowController.a4Height
+        let pageWidth = FViewWindowController.a4Width
 
         let scale = pageWidth / sourceWidth
         let scaledHeight = sourceHeight * scale
@@ -333,9 +333,9 @@ class MarkViewWindowController: NSObject, WKNavigationDelegate, NSWindowDelegate
         let filePath = url.path
         let ext = url.pathExtension.lowercased()
         state_currentFile = filename
-        window.title = "\(filename) - MarkView"
+        window.title = "\(filename) - FView"
 
-        if MarkViewWindowController.binaryExtensions.contains(ext) {
+        if FViewWindowController.binaryExtensions.contains(ext) {
             // Binary file: read as Data and send base64 to JS
             do {
                 let data = try Data(contentsOf: url)
@@ -416,9 +416,9 @@ class MarkViewWindowController: NSObject, WKNavigationDelegate, NSWindowDelegate
 // MARK: - Script Message Handler (per-window)
 
 class ScriptMessageHandler: NSObject, WKScriptMessageHandler {
-    weak var windowController: MarkViewWindowController?
+    weak var windowController: FViewWindowController?
 
-    init(windowController: MarkViewWindowController) {
+    init(windowController: FViewWindowController) {
         self.windowController = windowController
         super.init()
     }
@@ -534,9 +534,9 @@ class LocalFileSchemeHandler: NSObject, WKURLSchemeHandler {
 // MARK: - Drag Overlay View (handles file drops)
 
 class DragOverlayView: NSView {
-    weak var windowController: MarkViewWindowController?
+    weak var windowController: FViewWindowController?
 
-    init(frame: NSRect, windowController: MarkViewWindowController) {
+    init(frame: NSRect, windowController: FViewWindowController) {
         self.windowController = windowController
         super.init(frame: frame)
         registerForDraggedTypes([.fileURL])
@@ -590,11 +590,11 @@ class DragOverlayView: NSView {
 // MARK: - App Delegate
 
 class AppDelegate: NSObject, NSApplicationDelegate {
-    var windowControllers: [MarkViewWindowController] = []
+    var windowControllers: [FViewWindowController] = []
     var pendingFileURL: URL?
     var cliExportPDFPath: String? = nil
 
-    var activeWindowController: MarkViewWindowController? {
+    var activeWindowController: FViewWindowController? {
         if let keyWindow = NSApp.keyWindow {
             return windowControllers.first { $0.window === keyWindow }
         }
@@ -690,13 +690,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Window Management
 
     @discardableResult
-    func createWindowController() -> MarkViewWindowController {
-        let wc = MarkViewWindowController()
+    func createWindowController() -> FViewWindowController {
+        let wc = FViewWindowController()
         windowControllers.append(wc)
         return wc
     }
 
-    func removeWindowController(_ wc: MarkViewWindowController) {
+    func removeWindowController(_ wc: FViewWindowController) {
         windowControllers.removeAll { $0 === wc }
     }
 
@@ -714,7 +714,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let escapedFilePath = wc.escapeJSString(filePath)
 
         wc.state_currentFile = filename
-        wc.window.title = "\(filename) - MarkView"
+        wc.window.title = "\(filename) - FView"
 
         wc.pendingLoad = {
             let js = "loadMarkdownFromApp(\"\(escapedFilename)\", \"\(escapedContent)\", \"\(escapedFilePath)\")"
@@ -726,7 +726,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    func broadcastTheme(_ theme: String, except sender: MarkViewWindowController?) {
+    func broadcastTheme(_ theme: String, except sender: FViewWindowController?) {
         for wc in windowControllers {
             if wc !== sender {
                 wc.setTheme(theme)
@@ -742,9 +742,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // App menu
         let appMenuItem = NSMenuItem()
         let appMenu = NSMenu()
-        appMenu.addItem(withTitle: "About MarkView", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        appMenu.addItem(withTitle: "About FView", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
         appMenu.addItem(NSMenuItem.separator())
-        appMenu.addItem(withTitle: "Quit MarkView", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appMenu.addItem(withTitle: "Quit FView", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         appMenuItem.submenu = appMenu
         mainMenu.addItem(appMenuItem)
 

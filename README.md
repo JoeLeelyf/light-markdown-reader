@@ -1,10 +1,10 @@
-# MarkView
+# FView
 
-A lightweight, Typora-style local file reader for macOS. Supports Markdown and structured data formats commonly used in ML/AI workflows.
+A lightweight native macOS file viewer for Markdown and ML data files. Supports structured data formats commonly used in ML/AI workflows.
 
 Built with Swift + WKWebView. No Electron, no heavy dependencies — just a native macOS app wrapping a single HTML file.
 
-![MarkView Demo](asset/demo.png)
+![FView Demo](asset/demo.png)
 
 ## Supported Formats
 
@@ -79,12 +79,12 @@ The script will:
 
 1. Generate app icons via `generate_icon.py`
 2. Compile `main.swift` with `swiftc`
-3. Assemble `MarkView.app` bundle in `~/Downloads/`
+3. Assemble `FView.app` bundle in `~/Downloads/`
 
 Then open the app:
 
 ```bash
-open ~/Downloads/MarkView.app
+open ~/Downloads/FView.app
 ```
 
 ## CLI Usage
@@ -92,7 +92,7 @@ open ~/Downloads/MarkView.app
 Export a Markdown file to PDF without opening the GUI:
 
 ```bash
-~/Downloads/MarkView.app/Contents/MacOS/MarkView example.md --export-pdf output.pdf
+~/Downloads/FView.app/Contents/MacOS/FView example.md --export-pdf output.pdf
 ```
 
 ## Project Structure
@@ -104,7 +104,8 @@ Export a Markdown file to PDF without opening the GUI:
 │   ├── main.swift      # Native macOS app (AppKit + WKWebView)
 │   ├── Info.plist      # App bundle metadata & file associations
 │   ├── build.sh        # Build script
-│   ├── generate_icon.py # Generates app icon programmatically
+│   ├── icon_source.png # App icon source (1024x1024)
+│   ├── generate_icon.py # Generates icon set from source
 │   └── AppIcon.iconset/ # Generated icon assets
 └── README.md
 ```

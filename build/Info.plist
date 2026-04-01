@@ -3,11 +3,11 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleName</key>
-    <string>MarkView</string>
+    <string>FView</string>
     <key>CFBundleDisplayName</key>
-    <string>MarkView</string>
+    <string>FView</string>
     <key>CFBundleIdentifier</key>
-    <string>com.markview.app</string>
+    <string>com.fview.app</string>
     <key>CFBundleVersion</key>
     <string>1.0</string>
     <key>CFBundleShortVersionString</key>
@@ -15,7 +15,7 @@
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleExecutable</key>
-    <string>MarkView</string>
+    <string>FView</string>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>LSMinimumSystemVersion</key>
@@ -84,7 +84,7 @@
             <string>Alternate</string>
             <key>LSItemContentTypes</key>
             <array>
-                <string>com.markview.parquet</string>
+                <string>com.fview.parquet</string>
             </array>
             <key>CFBundleTypeExtensions</key>
             <array>
@@ -118,7 +118,7 @@
         </dict>
         <dict>
             <key>UTTypeIdentifier</key>
-            <string>com.markview.jsonl</string>
+            <string>com.fview.jsonl</string>
             <key>UTTypeDescription</key>
             <string>JSON Lines</string>
             <key>UTTypeConformsTo</key>
@@ -136,7 +136,7 @@
         </dict>
         <dict>
             <key>UTTypeIdentifier</key>
-            <string>com.markview.yaml</string>
+            <string>com.fview.yaml</string>
             <key>UTTypeDescription</key>
             <string>YAML Document</string>
             <key>UTTypeConformsTo</key>
@@ -154,7 +154,7 @@
         </dict>
         <dict>
             <key>UTTypeIdentifier</key>
-            <string>com.markview.toml</string>
+            <string>com.fview.toml</string>
             <key>UTTypeDescription</key>
             <string>TOML Document</string>
             <key>UTTypeConformsTo</key>
@@ -171,7 +171,7 @@
         </dict>
         <dict>
             <key>UTTypeIdentifier</key>
-            <string>com.markview.parquet</string>
+            <string>com.fview.parquet</string>
             <key>UTTypeDescription</key>
             <string>Apache Parquet Data File</string>
             <key>UTTypeConformsTo</key>
@@ -188,7 +188,7 @@
         </dict>
         <dict>
             <key>UTTypeIdentifier</key>
-            <string>com.markview.tsv</string>
+            <string>com.fview.tsv</string>
             <key>UTTypeDescription</key>
             <string>Tab-Separated Values</string>
             <key>UTTypeConformsTo</key>

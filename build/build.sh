@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 BUILD_DIR="$SCRIPT_DIR"
 OUTPUT_DIR="/Users/liyifei/Downloads"
-APP_NAME="MarkView"
+APP_NAME="FView"
 APP_BUNDLE="$OUTPUT_DIR/$APP_NAME.app"
 
 echo "=== Building $APP_NAME ==="

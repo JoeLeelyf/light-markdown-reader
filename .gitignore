@@ -1,6 +1,9 @@
 .DS_Store
 
 # Build artifacts
-build/MarkView
+build/FView
 build/AppIcon.icns
 build/AppIcon.iconset/
+
+# Temporary files
+tmp/

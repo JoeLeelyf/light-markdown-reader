@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>MarkView - Markdown Reader</title>
+<title>FView - File Viewer</title>
 <meta name="description" content="A beautiful local Markdown reader inspired by Typora">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" id="hljs-light">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" id="hljs-dark" disabled>
@@ -1262,7 +1262,7 @@ body.pdf-export-mode .markdown-body p { orphans: 3; widows: 3; }
     <span class="titlebar-dot dot-yellow"></span>
     <span class="titlebar-dot dot-green"></span>
   </div>
-  <span class="titlebar-text" id="titleText">MarkView</span>
+  <span class="titlebar-text" id="titleText">FView</span>
 </div>
 
 <!-- Toolbar -->
@@ -1344,8 +1344,8 @@ body.pdf-export-mode .markdown-body p { orphans: 3; widows: 3; }
             <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/>
             <line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
           </svg>
-          <h2>MarkView</h2>
-          <p>A beautiful Markdown reader inspired by Typora.<br>
+          <h2>FView</h2>
+          <p>A lightweight native file viewer for Markdown and data files.<br>
           Open a file or drag & drop to start reading.</p>
           <div class="welcome-shortcut">
             <kbd>⌘</kbd> + <kbd>O</kbd>&nbsp; to open file
@@ -1403,7 +1403,7 @@ const state = {
   sidebarVisible: true,
   focusMode: false,
   files: [],
-  theme: localStorage.getItem('markview-theme') || 'light',
+  theme: localStorage.getItem('fview-theme') || 'light',
   searchVisible: false,
   // Split view (Phase 3)
   panes: [{id: 'pane-0', activeTabId: null}],
@@ -1416,7 +1416,7 @@ function getTabByFilePath(filePath) { return state.tabs.find(t => t.filePath && 
 
 // ===== Reading Progress Memory =====
 const ReadingProgress = {
-  STORAGE_KEY: 'markview-reading-progress',
+  STORAGE_KEY: 'fview-reading-progress',
   MAX_ENTRIES: 100,
   getAll() {
     try { return JSON.parse(localStorage.getItem(this.STORAGE_KEY) || '{}'); }
@@ -1469,7 +1469,7 @@ const dom = {
 };
 
 // ===== Native App Detection (must be before any code that uses isNativeApp) =====
-const isNativeApp = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.markview;
+const isNativeApp = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.fview;
 if (isNativeApp) {
   document.body.classList.add('native-app');
 }
@@ -1676,8 +1676,8 @@ function closeTab(tabId) {
     dom.dataView.style.display = 'none';
     dom.sourceView.classList.remove('active');
     dom.welcomeScreen.style.display = '';
-    dom.titleText.textContent = 'MarkView';
-    document.title = 'MarkView';
+    dom.titleText.textContent = 'FView';
+    document.title = 'FView';
     dom.outlinePanel.innerHTML = '';
     dom.statWords.textContent = '';
     dom.statChars.textContent = '';
@@ -1685,7 +1685,7 @@ function closeTab(tabId) {
     dom.statReadTime.textContent = '';
     updateTabBarVisibility();
     if (isNativeApp) {
-      window.webkit.messageHandlers.markview.postMessage({ action: 'updateTitle', title: 'MarkView' });
+      window.webkit.messageHandlers.fview.postMessage({ action: 'updateTitle', title: 'FView' });
     }
     return;
   }
@@ -1713,11 +1713,11 @@ function activateTab(tabId) {
   if (pane) pane.activeTabId = tabId;
 
   // Update title
-  const title = tab.filename + ' - MarkView';
+  const title = tab.filename + ' - FView';
   dom.titleText.textContent = title;
   document.title = title;
   if (isNativeApp) {
-    window.webkit.messageHandlers.markview.postMessage({ action: 'updateTitle', title: title });
+    window.webkit.messageHandlers.fview.postMessage({ action: 'updateTitle', title: title });
   }
 
   // Render content
@@ -1836,7 +1836,7 @@ function renderTabBar() {
       if (state.tabs.length > 1 && isNativeApp) {
         const rect = document.documentElement.getBoundingClientRect();
         if (e.clientX < 0 || e.clientY < 0 || e.clientX > rect.width || e.clientY > rect.height) {
-          window.webkit.messageHandlers.markview.postMessage({
+          window.webkit.messageHandlers.fview.postMessage({
             action: 'detachTab',
             filename: tab.filename,
             filePath: tab.filePath || '',
@@ -2088,21 +2088,21 @@ document.addEventListener('drop', (e) => {
 // ===== Toolbar Actions =====
 $('#btnOpen').addEventListener('click', () => {
   if (isNativeApp) {
-    window.webkit.messageHandlers.markview.postMessage({ action: 'openFile' });
+    window.webkit.messageHandlers.fview.postMessage({ action: 'openFile' });
   } else {
     dom.fileInput.click();
   }
 });
 $('#btnWelcomeOpen').addEventListener('click', () => {
   if (isNativeApp) {
-    window.webkit.messageHandlers.markview.postMessage({ action: 'openFile' });
+    window.webkit.messageHandlers.fview.postMessage({ action: 'openFile' });
   } else {
     dom.fileInput.click();
   }
 });
 $('#btnFolder').addEventListener('click', () => {
   if (isNativeApp) {
-    window.webkit.messageHandlers.markview.postMessage({ action: 'openFolder' });
+    window.webkit.messageHandlers.fview.postMessage({ action: 'openFolder' });
   } else {
     dom.folderInput.click();
   }
@@ -2151,7 +2151,7 @@ function setTheme(themeName) {
 
 function applyTheme() {
   document.documentElement.dataset.theme = state.theme;
-  try { localStorage.setItem('markview-theme', state.theme); } catch {}
+  try { localStorage.setItem('fview-theme', state.theme); } catch {}
   const isDark = DARK_THEMES.includes(state.theme);
   $('#iconSun').style.display = isDark ? 'none' : 'block';
   $('#iconMoon').style.display = isDark ? 'block' : 'none';
@@ -2159,7 +2159,7 @@ function applyTheme() {
   $('#hljs-dark').disabled = !isDark;
   // Notify Swift for cross-window theme sync
   if (isNativeApp) {
-    window.webkit.messageHandlers.markview.postMessage({ action: 'themeChanged', theme: state.theme });
+    window.webkit.messageHandlers.fview.postMessage({ action: 'themeChanged', theme: state.theme });
   }
 }
 
@@ -2209,8 +2209,8 @@ function clearHighlight() {
 $('#btnExport').addEventListener('click', () => {
   const tab = getActiveTab();
   if (!tab || !tab.rawContent) return;
-  if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.markview) {
-    window.webkit.messageHandlers.markview.postMessage({ action: 'exportPDF' });
+  if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.fview) {
+    window.webkit.messageHandlers.fview.postMessage({ action: 'exportPDF' });
     return;
   }
   const html = `<!DOCTYPE html>
@@ -3464,9 +3464,9 @@ $('#btnSidebar').classList.add('active');
 $('#pane-0').addEventListener('mousedown', () => setActivePane('pane-0'));
 
 // ===== Demo Content =====
-const demoContent = `# Welcome to MarkView
+const demoContent = `# Welcome to FView
 
-A beautiful, local Markdown reader inspired by **Typora**.
+A lightweight native file viewer for **Markdown** and **ML data files**.
 
 ## Features
 
@@ -3529,7 +3529,7 @@ for num in fibonacci(100):
 \`\`\`javascript
 const greet = (name) => {
   console.log(\`Hello, \${name}!\`);
-  return { message: \`Welcome to MarkView\` };
+  return { message: \`Welcome to FView\` };
 };
 \`\`\`
 
@@ -3566,7 +3566,7 @@ $$
 
 ### Image
 
-![MarkView Banner](data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI2U4ZjBmZSIgcng9IjEyIi8+PHRleHQgeD0iMzAwIiB5PSIxMDUiIGZvbnQtZmFtaWx5PSItYXBwbGUtc3lzdGVtLCBzYW5zLXNlcmlmIiBmb250LXNpemU9IjI0IiBmb250LXdlaWdodD0iNjAwIiBmaWxsPSIjMDM2NmQ2IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj5NYXJrVmlldyAtIE1hcmtkb3duIFJlYWRlcjwvdGV4dD48L3N2Zz4=)
+![FView Banner](data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iIzFhMWEyZSIgcng9IjEyIi8+PHRleHQgeD0iMzAwIiB5PSIxMDUiIGZvbnQtZmFtaWx5PSJtb25vc3BhY2UiIGZvbnQtc2l6ZT0iMzIiIGZvbnQtd2VpZ2h0PSI2MDAiIGZpbGw9IiNmZmZmZmYiIHRleHQtYW5jaG9yPSJtaWRkbGUiPmYmZ3Q7IEZWaWV3PC90ZXh0Pjwvc3ZnPg==)
 
 ---
 
@@ -3599,7 +3599,7 @@ window.receiveFilesFromApp = function(filenames) {
     btn.addEventListener('click', () => {
       $$('.file-item').forEach(f => f.classList.remove('active'));
       btn.classList.add('active');
-      window.webkit.messageHandlers.markview.postMessage({ action: 'openFileByName', filename: name });
+      window.webkit.messageHandlers.fview.postMessage({ action: 'openFileByName', filename: name });
     });
     dom.filesPanel.appendChild(btn);
   });
@@ -3612,8 +3612,8 @@ window.receiveFilesFromApp = function(filenames) {
 
 // Render demo on load
 renderMarkdown(demoContent);
-dom.titleText.textContent = 'Welcome — MarkView';
-document.title = 'MarkView';
+dom.titleText.textContent = 'Welcome — FView';
+document.title = 'FView';
 </script>
 </body>
 </html>
