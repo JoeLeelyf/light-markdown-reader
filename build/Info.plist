@@ -91,6 +91,40 @@
                 <string>parquet</string>
             </array>
         </dict>
+        <dict>
+            <key>CFBundleTypeName</key>
+            <string>NumPy Array File</string>
+            <key>CFBundleTypeRole</key>
+            <string>Viewer</string>
+            <key>LSHandlerRank</key>
+            <string>Alternate</string>
+            <key>LSItemContentTypes</key>
+            <array>
+                <string>com.fview.npy</string>
+            </array>
+            <key>CFBundleTypeExtensions</key>
+            <array>
+                <string>npy</string>
+            </array>
+        </dict>
+        <dict>
+            <key>CFBundleTypeName</key>
+            <string>Model Weight File</string>
+            <key>CFBundleTypeRole</key>
+            <string>Viewer</string>
+            <key>LSHandlerRank</key>
+            <string>Alternate</string>
+            <key>LSItemContentTypes</key>
+            <array>
+                <string>com.fview.pth</string>
+            </array>
+            <key>CFBundleTypeExtensions</key>
+            <array>
+                <string>pth</string>
+                <string>pt</string>
+                <string>bin</string>
+            </array>
+        </dict>
     </array>
     <key>UTImportedTypeDeclarations</key>
     <array>
@@ -200,6 +234,42 @@
                 <key>public.filename-extension</key>
                 <array>
                     <string>tsv</string>
+                </array>
+            </dict>
+        </dict>
+        <dict>
+            <key>UTTypeIdentifier</key>
+            <string>com.fview.npy</string>
+            <key>UTTypeDescription</key>
+            <string>NumPy Array File</string>
+            <key>UTTypeConformsTo</key>
+            <array>
+                <string>public.data</string>
+            </array>
+            <key>UTTypeTagSpecification</key>
+            <dict>
+                <key>public.filename-extension</key>
+                <array>
+                    <string>npy</string>
+                </array>
+            </dict>
+        </dict>
+        <dict>
+            <key>UTTypeIdentifier</key>
+            <string>com.fview.pth</string>
+            <key>UTTypeDescription</key>
+            <string>Model Weight File</string>
+            <key>UTTypeConformsTo</key>
+            <array>
+                <string>public.data</string>
+            </array>
+            <key>UTTypeTagSpecification</key>
+            <dict>
+                <key>public.filename-extension</key>
+                <array>
+                    <string>pth</string>
+                    <string>pt</string>
+                    <string>bin</string>
                 </array>
             </dict>
         </dict>

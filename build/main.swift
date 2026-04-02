@@ -113,6 +113,10 @@ class FViewWindowController: NSObject, WKNavigationDelegate, NSWindowDelegate {
             .init(filenameExtension: "parquet")!,
             .init(filenameExtension: "csv")!,
             .init(filenameExtension: "tsv")!,
+            .init(filenameExtension: "npy")!,
+            .init(filenameExtension: "pth")!,
+            .init(filenameExtension: "pt")!,
+            .init(filenameExtension: "bin")!,
         ]
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
@@ -138,7 +142,7 @@ class FViewWindowController: NSObject, WKNavigationDelegate, NSWindowDelegate {
 
     func openFolderAt(_ dirURL: URL) {
         let fm = FileManager.default
-        let exts: Set<String> = ["md", "markdown", "mdown", "mkd", "mkdn", "mdx", "txt", "json", "jsonl", "ndjson", "xml", "toml", "yaml", "yml", "parquet", "csv", "tsv"]
+        let exts: Set<String> = ["md", "markdown", "mdown", "mkd", "mkdn", "mdx", "txt", "json", "jsonl", "ndjson", "xml", "toml", "yaml", "yml", "parquet", "csv", "tsv", "npy", "pth", "pt"]
 
         guard let enumerator = fm.enumerator(at: dirURL, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles, .skipsSubdirectoryDescendants]),
               let files = enumerator.allObjects as? [URL] else { return }
@@ -325,7 +329,7 @@ class FViewWindowController: NSObject, WKNavigationDelegate, NSWindowDelegate {
 
     // MARK: - Load Markdown File
 
-    static let binaryExtensions: Set<String> = ["parquet"]
+    static let binaryExtensions: Set<String> = ["parquet", "npy", "pth", "pt", "bin"]
 
     func loadMarkdownFile(url: URL) {
         NSLog("loadMarkdownFile: \(url.path), pageLoaded=\(pageLoaded)")
@@ -572,7 +576,7 @@ class DragOverlayView: NSView {
             if let urlString = item.string(forType: .fileURL),
                let url = URL(string: urlString) {
                 let ext = url.pathExtension.lowercased()
-                if ["md", "markdown", "mdown", "mkd", "mkdn", "mdx", "txt", "json", "jsonl", "ndjson", "xml", "toml", "yaml", "yml", "parquet", "csv", "tsv"].contains(ext) {
+                if ["md", "markdown", "mdown", "mkd", "mkdn", "mdx", "txt", "json", "jsonl", "ndjson", "xml", "toml", "yaml", "yml", "parquet", "csv", "tsv", "npy", "pth", "pt", "bin"].contains(ext) {
                     windowController?.loadMarkdownFile(url: url)
                     return true
                 }
@@ -587,7 +591,7 @@ class DragOverlayView: NSView {
             if let urlString = item.string(forType: .fileURL),
                let url = URL(string: urlString) {
                 let ext = url.pathExtension.lowercased()
-                if ["md", "markdown", "mdown", "mkd", "mkdn", "mdx", "txt", "json", "jsonl", "ndjson", "xml", "toml", "yaml", "yml", "parquet", "csv", "tsv"].contains(ext) {
+                if ["md", "markdown", "mdown", "mkd", "mkdn", "mdx", "txt", "json", "jsonl", "ndjson", "xml", "toml", "yaml", "yml", "parquet", "csv", "tsv", "npy", "pth", "pt", "bin"].contains(ext) {
                     return true
                 }
             }

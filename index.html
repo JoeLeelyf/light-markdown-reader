@@ -691,6 +691,7 @@ body.pdf-export-mode .pane:not(:first-child) { display: none !important; }
 /* Strong & Em */
 .markdown-body strong { font-weight: 600; }
 .markdown-body em { font-style: italic; }
+.markdown-body mark { background: #fff3bf; padding: 0.1em 0.2em; border-radius: 2px; }
 
 /* Lists */
 .markdown-body ul, .markdown-body ol {
@@ -2730,6 +2731,16 @@ if (isNativeApp) {
 
 // ===== Marked Configuration =====
 marked.use({
+  extensions: [{
+    name: 'highlight',
+    level: 'inline',
+    start(src) { return src.indexOf('=='); },
+    tokenizer(src) {
+      const match = src.match(/^==([^=]+)==/);
+      if (match) return { type: 'highlight', raw: match[0], text: match[1] };
+    },
+    renderer(token) { return `<mark>${token.text}</mark>`; }
+  }],
   gfm: true,
   breaks: false,
   renderer: {
@@ -2771,10 +2782,12 @@ const FORMAT_MAP = {
   'xml': 'xml', 'toml': 'toml',
   'yaml': 'yaml', 'yml': 'yaml',
   'parquet': 'parquet',
+  'npy': 'npy',
+  'pth': 'pth', 'pt': 'pth', 'bin': 'pth',
   'csv': 'csv', 'tsv': 'tsv',
 };
 
-const BINARY_FORMATS = new Set(['parquet']);
+const BINARY_FORMATS = new Set(['parquet', 'npy', 'pth']);
 
 function detectFormat(filename) {
   if (!filename) return 'markdown';
@@ -2981,8 +2994,9 @@ function activateTab(tabId) {
     dom.dataView.style.display = 'none';
     dom.welcomeScreen.style.display = 'none';
 
-    if (tab.format === 'parquet' && tab.binaryData) {
-      // Parquet: async rendering
+    const isAsyncBinary = ['parquet', 'npy', 'pth'].includes(tab.format) && tab.binaryData;
+    if (isAsyncBinary) {
+      const formatLabel = tab.format === 'npy' ? 'NPY' : tab.format === 'pth' ? 'Model Weights' : 'Parquet';
       dom.sourceEditor.value = '(binary file)';
       dom.sourceView.classList.toggle('active', false);
       $('#btnSource').classList.toggle('active', false);
@@ -2992,9 +3006,10 @@ function activateTab(tabId) {
         updateStructuredStats(tab);
         buildStructuredOutline(tab);
       } else {
-        dom.dataView.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-muted)">Loading Parquet file...</div>';
+        dom.dataView.innerHTML = `<div style="padding:40px;text-align:center;color:var(--text-muted)">Loading ${formatLabel} file...</div>`;
         dom.dataView.style.display = 'block';
-        renderParquetAsync(tab).then(() => {
+        const renderFn = tab.format === 'npy' ? renderNpyAsync : tab.format === 'pth' ? renderPthAsync : renderParquetAsync;
+        renderFn(tab).then(() => {
           if (state.activeTabId === tabId) {
             updateStructuredStats(tab);
             buildStructuredOutline(tab);
@@ -3699,12 +3714,14 @@ function renderTabInPane(tab, paneEl) {
 
   if (isStructuredFormat(tab.format)) {
     mdBody.style.display = 'none';
-    if (tab.format === 'parquet' && tab.binaryData) {
+    if (['parquet', 'npy', 'pth'].includes(tab.format) && tab.binaryData) {
       if (tab.cachedHTML) {
         dataView.innerHTML = tab.cachedHTML;
       } else {
-        dataView.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-muted)">Loading Parquet...</div>';
-        renderParquetAsync(tab).then(() => {
+        const formatLabel = tab.format === 'npy' ? 'NPY' : tab.format === 'pth' ? 'Model Weights' : 'Parquet';
+        dataView.innerHTML = `<div style="padding:40px;text-align:center;color:var(--text-muted)">Loading ${formatLabel}...</div>`;
+        const renderFn = tab.format === 'npy' ? renderNpyAsync : tab.format === 'pth' ? renderPthAsync : renderParquetAsync;
+        renderFn(tab).then(() => {
           if (tab.cachedHTML) dataView.innerHTML = tab.cachedHTML;
         });
       }
@@ -3799,6 +3816,8 @@ function renderStructuredData(tab) {
       case 'csv': return renderCSV(tab.rawContent, 'csv');
       case 'tsv': return renderCSV(tab.rawContent, 'tsv');
       case 'parquet': return null; // handled async
+      case 'npy': return null; // handled async
+      case 'pth': return null; // handled async
       default: return null;
     }
   } catch (e) {
@@ -4089,6 +4108,16 @@ function updateStructuredStats(tab) {
     dom.statReadTime.textContent = tab.parquetMeta ? `${tab.parquetMeta.columns.length} cols` : '';
     return;
   }
+  if (tab.format === 'npy' || tab.format === 'pth') {
+    const size = tab.binaryData ? tab.binaryData.byteLength : 0;
+    const sizeStr = size > 1024 * 1024 ? (size / (1024 * 1024)).toFixed(1) + ' MB' :
+                    size > 1024 ? (size / 1024).toFixed(1) + ' KB' : size + ' B';
+    dom.statWords.textContent = tab.format.toUpperCase();
+    dom.statChars.textContent = sizeStr;
+    dom.statLines.textContent = '';
+    dom.statReadTime.textContent = '';
+    return;
+  }
   const lines = tab.rawContent.split('\n').length;
   const chars = tab.rawContent.length;
   dom.statWords.textContent = tab.format.toUpperCase();
@@ -4190,7 +4219,7 @@ function buildStructuredOutline(tab) {
 
   const format = tab.format;
 
-  // For parquet, use binary size; for others, use rawContent
+  // For binary formats, use binaryData size
   if (format === 'parquet') {
     const size = tab.binaryData ? tab.binaryData.byteLength : 0;
     const sizeStr = size > 1024 * 1024 ? (size / (1024 * 1024)).toFixed(1) + ' MB' :
@@ -4202,6 +4231,17 @@ function buildStructuredOutline(tab) {
       `<div style="font-size:12px;color:var(--text-muted)">${escapeHtml(sizeStr)} · ${rowCount} rows</div>`;
     dom.outlinePanel.appendChild(header);
     buildParquetOutline(tab);
+    return;
+  }
+  if (format === 'npy' || format === 'pth') {
+    const size = tab.binaryData ? tab.binaryData.byteLength : 0;
+    const sizeStr = size > 1024 * 1024 ? (size / (1024 * 1024)).toFixed(1) + ' MB' :
+                    size > 1024 ? (size / 1024).toFixed(1) + ' KB' : size + ' B';
+    const header = document.createElement('div');
+    header.style.cssText = 'padding:12px;border-bottom:1px solid var(--border-light);';
+    header.innerHTML = `<span style="display:inline-block;padding:2px 8px;border-radius:4px;background:var(--accent);color:#fff;font-size:11px;font-weight:600;margin-bottom:6px">${format.toUpperCase()}</span>` +
+      `<div style="font-size:12px;color:var(--text-muted)">${escapeHtml(sizeStr)}</div>`;
+    dom.outlinePanel.appendChild(header);
     return;
   }
 
@@ -4563,6 +4603,474 @@ async function renderParquetAsync(tab) {
       dom.dataView.style.display = 'block';
     }
   }
+}
+
+// ===== NPY Support =====
+
+async function renderNpyAsync(tab) {
+  if (!tab.binaryData) return;
+  try {
+    const data = new Uint8Array(tab.binaryData);
+    if (data[0] !== 0x93 || data[1] !== 0x4E || data[2] !== 0x55 ||
+        data[3] !== 0x4D || data[4] !== 0x50 || data[5] !== 0x59) {
+      throw new Error('Not a valid NumPy .npy file (bad magic bytes)');
+    }
+    const major = data[6], minor = data[7];
+    let headerLen, dataStart;
+    if (major === 1) {
+      headerLen = data[8] | (data[9] << 8);
+      dataStart = 10 + headerLen;
+    } else {
+      headerLen = data[8] | (data[9] << 8) | (data[10] << 16) | (data[11] * 16777216);
+      dataStart = 12 + headerLen;
+    }
+    const dec = new TextDecoder('latin1'); // NPY headers are ASCII
+    const header = dec.decode(data.subarray(major === 1 ? 10 : 12, dataStart)).trim();
+    const descrM = header.match(/'descr'\s*:\s*'([^']+)'/);
+    const fortranM = header.match(/'fortran_order'\s*:\s*(True|False)/);
+    const shapeM = header.match(/'shape'\s*:\s*\(([^)]*)\)/);
+    if (!descrM) throw new Error('Could not parse NPY header dict');
+
+    const descr = descrM[1];
+    const fortran = fortranM?.[1] === 'True';
+    const shapeStr = shapeM?.[1].trim() ?? '';
+    const shape = shapeStr ? shapeStr.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n)) : [];
+    const byteSize = parseInt(descr.replace(/[^0-9]/g, '')) || 1;
+    const tc = descr.replace(/^[<>=|]/, '')[0] || '?';
+    const typeMap = {b:'bool',i:'int',u:'uint',f:'float',c:'complex',U:'str',S:'bytes',O:'object'};
+    const endianMap = {'<':'LE','>':'BE','=':'native','|':''};
+    const typeName = typeMap[tc] || tc;
+    const endian = endianMap[descr[0]] || '';
+    const dtype = `${typeName}${byteSize*8}${endian ? ' '+endian : ''}`;
+    const totalElems = shape.length === 0 ? 1 : shape.reduce((a,b) => a*b, 1);
+    const fileSize = data.length;
+    const fmtSize = fileSize>1048576?(fileSize/1048576).toFixed(1)+' MB':fileSize>1024?(fileSize/1024).toFixed(1)+' KB':fileSize+' B';
+    const shapeDisplay = shape.length === 0 ? 'scalar ()' : `(${shape.join(' × ')})`;
+
+    // Sample values (first 8)
+    let samples = [];
+    const sN = Math.min(8, totalElems);
+    if (tc==='f' && byteSize===4 && dataStart+sN*4<=data.length) {
+      const dv = new DataView(data.buffer, data.byteOffset+dataStart);
+      for (let j=0;j<sN;j++) samples.push(dv.getFloat32(j*4, descr[0]==='<').toPrecision(4));
+    } else if (tc==='f' && byteSize===8 && dataStart+sN*8<=data.length) {
+      const dv = new DataView(data.buffer, data.byteOffset+dataStart);
+      for (let j=0;j<sN;j++) samples.push(dv.getFloat64(j*8, descr[0]==='<').toPrecision(4));
+    } else if ((tc==='i'||tc==='u') && byteSize<=4 && dataStart+sN*byteSize<=data.length) {
+      const le = descr[0]==='<';
+      const dv = new DataView(data.buffer, data.byteOffset+dataStart);
+      for (let j=0;j<sN;j++) {
+        const off = j*byteSize;
+        if (byteSize===1) samples.push(data[dataStart+j]);
+        else if (byteSize===2) samples.push(tc==='i'?dv.getInt16(off,le):dv.getUint16(off,le));
+        else if (byteSize===4) samples.push(tc==='i'?dv.getInt32(off,le):dv.getUint32(off,le));
+      }
+    }
+
+    let html = `<div class="data-view-header">
+      <span class="data-format-badge">NPY</span>
+      <span class="data-view-stats">shape ${escapeHtml(shapeDisplay)} · ${totalElems.toLocaleString()} elements · ${fmtSize}</span>
+    </div><div style="padding:20px">`;
+    html += `<table class="parquet-table" style="max-width:460px"><thead><tr><th>Property</th><th>Value</th></tr></thead><tbody>
+      <tr><td>Shape</td><td><code>${escapeHtml(shapeDisplay)}</code></td></tr>
+      <tr><td>Dtype</td><td><code>${escapeHtml(descr)}</code> — ${escapeHtml(dtype)}</td></tr>
+      <tr><td>Order</td><td>${fortran?'Fortran (column-major)':'C (row-major)'}</td></tr>
+      <tr><td>Elements</td><td>${totalElems.toLocaleString()}</td></tr>
+      <tr><td>File size</td><td>${fmtSize}</td></tr>
+      <tr><td>NPY version</td><td>${major}.${minor}</td></tr>
+    </tbody></table>`;
+    if (samples.length > 0) {
+      html += `<div style="margin-top:16px;font-size:13px"><strong>First ${samples.length} value${samples.length>1?'s':''}:</strong></div>
+        <code style="display:block;margin-top:6px;padding:10px;background:var(--bg-code);border-radius:4px;font-size:12px;word-break:break-all">[${samples.join(', ')}${totalElems>sN?', …':''}]</code>`;
+    }
+    html += '</div>';
+
+    tab.cachedHTML = html;
+    if (state.activeTabId === tab.id) {
+      dom.dataView.innerHTML = html;
+      dom.dataView.style.display = 'block';
+    }
+  } catch (e) {
+    const errHtml = `<div style="padding:20px;color:var(--text-secondary)"><strong>Failed to parse NPY:</strong> ${escapeHtml(e.message)}</div>`;
+    tab.cachedHTML = errHtml;
+    if (state.activeTabId === tab.id) { dom.dataView.innerHTML = errHtml; dom.dataView.style.display = 'block'; }
+  }
+}
+
+// ===== PyTorch / Binary Model Weight Support =====
+
+async function renderPthAsync(tab) {
+  if (!tab.binaryData) return;
+  try {
+    const data = new Uint8Array(tab.binaryData);
+    const view = new DataView(tab.binaryData);
+    let html;
+    const sig32 = view.getUint32(0, true);
+    if (sig32 === 0x04034b50) {
+      html = parsePthZipFormat(data);
+    } else if (data[0]===0x47 && data[1]===0x47 && data[2]===0x55 && data[3]===0x46) {
+      html = parseGGUFFormat(data);
+    } else {
+      html = tryParseSafeTensors(data) || parseBinaryFallback(data);
+    }
+    tab.cachedHTML = html;
+    if (state.activeTabId === tab.id) {
+      dom.dataView.innerHTML = html;
+      dom.dataView.style.display = 'block';
+    }
+  } catch (e) {
+    const errHtml = `<div style="padding:20px;color:var(--text-secondary)"><strong>Failed to parse model file:</strong> ${escapeHtml(e.message)}</div>`;
+    tab.cachedHTML = errHtml;
+    if (state.activeTabId === tab.id) { dom.dataView.innerHTML = errHtml; dom.dataView.style.display = 'block'; }
+  }
+}
+
+function _fmtBytes(n) {
+  return n>1048576?(n/1048576).toFixed(1)+' MB':n>1024?(n/1024).toFixed(1)+' KB':n+' B';
+}
+
+function parsePthZipFormat(data) {
+  const view = new DataView(data.buffer, data.byteOffset);
+  const dec = new TextDecoder('utf-8');
+
+  // Parse central directory (at end of file) to get correct sizes
+  // (PyTorch sets data-descriptor bit 3, so local headers have size=0)
+  let eocdPos = -1;
+  for (let i = data.length - 22; i >= Math.max(0, data.length - 65558); i--) {
+    if (view.getUint32(i, true) === 0x06054b50) { eocdPos = i; break; }
+  }
+
+  let cdEntries = [];
+  if (eocdPos !== -1) {
+    const cdOffset = view.getUint32(eocdPos + 16, true);
+    const numEntries = view.getUint16(eocdPos + 10, true);
+    let pos = cdOffset;
+    for (let i = 0; i < numEntries && pos + 46 <= data.length; i++) {
+      if (view.getUint32(pos, true) !== 0x02014b50) break;
+      const compressedSize = view.getUint32(pos + 20, true);
+      const uncompressedSize = view.getUint32(pos + 24, true);
+      const fnLen = view.getUint16(pos + 28, true);
+      const extraLen = view.getUint16(pos + 30, true);
+      const commentLen = view.getUint16(pos + 32, true);
+      const localHeaderOffset = view.getUint32(pos + 42, true);
+      const filename = dec.decode(data.subarray(pos + 46, pos + 46 + fnLen));
+      cdEntries.push({ filename, compressedSize, uncompressedSize, localHeaderOffset });
+      pos += 46 + fnLen + extraLen + commentLen;
+    }
+  }
+
+  // Resolve data offsets from local headers
+  const entries = cdEntries.map(e => {
+    const lp = e.localHeaderOffset;
+    if (lp + 30 > data.length || view.getUint32(lp, true) !== 0x04034b50) return null;
+    const fnLen = view.getUint16(lp + 26, true);
+    const extraLen = view.getUint16(lp + 28, true);
+    return {
+      filename: e.filename,
+      comprMethod: view.getUint16(lp + 8, true),
+      compressedSize: e.compressedSize,
+      uncompressedSize: e.uncompressedSize,
+      dataOffset: lp + 30 + fnLen + extraLen
+    };
+  }).filter(Boolean);
+
+  const pklEntry = entries.find(e => e.filename.endsWith('data.pkl') || e.filename.endsWith('.pkl'));
+  const storageEntries = entries.filter(e => /\/data\/\d+$/.test(e.filename) || /^data\/\d+$/.test(e.filename));
+
+  let tensors = {};
+  let parseError = '';
+  if (pklEntry && pklEntry.comprMethod === 0) {
+    try {
+      const pklData = data.subarray(pklEntry.dataOffset, pklEntry.dataOffset + pklEntry.uncompressedSize);
+      const result = parsePickleStateDict(pklData);
+      tensors = extractTensorInfo(result);
+    } catch (e) { parseError = e.message; }
+  }
+
+  const fileSize = data.length;
+  const fmtSize = _fmtBytes(fileSize);
+  const keys = Object.keys(tensors).sort();
+  const totalParams = Object.values(tensors).reduce((s,t) => s+(t.numel||0), 0);
+  const paramStr = totalParams>1e9?(totalParams/1e9).toFixed(2)+'B':totalParams>1e6?(totalParams/1e6).toFixed(1)+'M':totalParams>1000?(totalParams/1000).toFixed(1)+'K':String(totalParams);
+
+  let html = `<div class="data-view-header">
+    <span class="data-format-badge">PTH</span>
+    <span class="data-view-stats">${keys.length} tensors · ${paramStr} params · ${fmtSize}</span>
+  </div><div style="padding:20px">`;
+  html += `<table class="parquet-table" style="max-width:460px"><thead><tr><th>Property</th><th>Value</th></tr></thead><tbody>
+    <tr><td>Format</td><td>PyTorch ZIP (v1.6+)</td></tr>
+    <tr><td>Tensors</td><td>${keys.length}${storageEntries.length?` (${storageEntries.length} storage files)`:''}</td></tr>
+    <tr><td>Total params</td><td>${paramStr} (${totalParams.toLocaleString()})</td></tr>
+    <tr><td>File size</td><td>${fmtSize}</td></tr>
+    ${entries.length?`<tr><td>Archive files</td><td>${entries.length}</td></tr>`:''}
+  </tbody></table>`;
+
+  if (keys.length > 0) {
+    html += `<div style="margin-top:20px"><strong>Tensors (${keys.length}):</strong></div>`;
+    html += `<div class="parquet-table-wrap" style="margin-top:8px"><table class="parquet-table"><thead><tr><th>Name</th><th>Shape</th><th>Dtype</th><th>Params</th></tr></thead><tbody>`;
+    for (const key of keys) {
+      const t = tensors[key];
+      const shapeStr = t.shape && t.shape.length>0?`(${t.shape.join(' × ')})`: '()';
+      html += `<tr><td style="font-family:monospace;font-size:12px">${escapeHtml(key)}</td><td><code>${escapeHtml(shapeStr)}</code></td><td>${escapeHtml(t.dtype||'')}</td><td>${t.numel>0?t.numel.toLocaleString():''}</td></tr>`;
+    }
+    html += '</tbody></table></div>';
+  } else if (!pklEntry) {
+    html += `<div style="margin-top:16px;color:var(--text-muted)">No data.pkl found. Archive files:</div><ul style="margin-top:8px;font-size:12px;font-family:monospace">`;
+    for (const e of entries.slice(0,30)) html += `<li>${escapeHtml(e.filename)} (${_fmtBytes(e.uncompressedSize)})</li>`;
+    html += '</ul>';
+  } else if (parseError) {
+    html += `<div style="margin-top:16px;color:var(--text-muted)">Could not parse pickle: ${escapeHtml(parseError)}</div>`;
+    if (storageEntries.length>0) html += `<div style="margin-top:8px;font-size:12px">${storageEntries.length} tensor storage file(s) found.</div>`;
+  }
+  html += '</div>';
+  return html;
+}
+
+function tryParseSafeTensors(data) {
+  if (data.length < 8) return null;
+  const view = new DataView(data.buffer, data.byteOffset);
+  const headerSizeLo = view.getUint32(0, true);
+  const headerSizeHi = view.getUint32(4, true);
+  if (headerSizeHi !== 0 || headerSizeLo === 0 || headerSizeLo > 100*1024*1024) return null;
+  if (8 + headerSizeLo > data.length) return null;
+  let headerJson;
+  try {
+    const jsonStr = new TextDecoder('utf-8').decode(data.subarray(8, 8+headerSizeLo));
+    headerJson = JSON.parse(jsonStr);
+  } catch(e) { return null; }
+  const keys = Object.keys(headerJson).filter(k => k !== '__metadata__');
+  if (keys.length === 0) return null;
+  const first = headerJson[keys[0]];
+  if (!first || typeof first !== 'object' || (!first.dtype && !first.shape)) return null;
+
+  const fileSize = data.length;
+  const fmtSize = _fmtBytes(fileSize);
+  const meta = headerJson.__metadata__ || {};
+  const totalParams = keys.reduce((s,k) => { const t=headerJson[k]; return s+(t.shape?t.shape.reduce((a,b)=>a*b,1):0); }, 0);
+  const paramStr = totalParams>1e9?(totalParams/1e9).toFixed(2)+'B':totalParams>1e6?(totalParams/1e6).toFixed(1)+'M':totalParams>1000?(totalParams/1000).toFixed(1)+'K':String(totalParams);
+
+  let html = `<div class="data-view-header">
+    <span class="data-format-badge">SAFETENSORS</span>
+    <span class="data-view-stats">${keys.length} tensors · ${paramStr} params · ${fmtSize}</span>
+  </div><div style="padding:20px">`;
+  html += `<table class="parquet-table" style="max-width:460px"><thead><tr><th>Property</th><th>Value</th></tr></thead><tbody>
+    <tr><td>Format</td><td>SafeTensors (HuggingFace)</td></tr>
+    <tr><td>Tensors</td><td>${keys.length}</td></tr>
+    <tr><td>Total params</td><td>${paramStr} (${totalParams.toLocaleString()})</td></tr>
+    <tr><td>File size</td><td>${fmtSize}</td></tr>
+    ${Object.keys(meta).length?`<tr><td>Metadata</td><td style="font-size:11px">${escapeHtml(JSON.stringify(meta))}</td></tr>`:''}
+  </tbody></table>`;
+  if (keys.length > 0) {
+    html += `<div style="margin-top:20px"><strong>Tensors (${keys.length}):</strong></div>`;
+    html += `<div class="parquet-table-wrap" style="margin-top:8px"><table class="parquet-table"><thead><tr><th>Name</th><th>Shape</th><th>Dtype</th><th>Params</th></tr></thead><tbody>`;
+    for (const key of keys.sort()) {
+      const t = headerJson[key];
+      const shape = t.shape||[];
+      const shapeStr = `(${shape.join(' × ')})`;
+      const numel = shape.reduce((a,b)=>a*b,1);
+      html += `<tr><td style="font-family:monospace;font-size:12px">${escapeHtml(key)}</td><td><code>${escapeHtml(shapeStr)}</code></td><td>${escapeHtml(t.dtype||'')}</td><td>${numel.toLocaleString()}</td></tr>`;
+    }
+    html += '</tbody></table></div>';
+  }
+  html += '</div>';
+  return html;
+}
+
+function parseGGUFFormat(data) {
+  const view = new DataView(data.buffer, data.byteOffset);
+  const version = view.getUint32(4, true);
+  let pos = 8;
+  let tensorCount = 0, kvCount = 0;
+  try { tensorCount = view.getUint32(pos, true); pos+=8; kvCount = view.getUint32(pos, true); pos+=8; } catch(e) {}
+  const fmtSize = _fmtBytes(data.length);
+
+  let html = `<div class="data-view-header">
+    <span class="data-format-badge">GGUF</span>
+    <span class="data-view-stats">${tensorCount} tensors · v${version} · ${fmtSize}</span>
+  </div><div style="padding:20px">`;
+  html += `<table class="parquet-table" style="max-width:460px"><thead><tr><th>Property</th><th>Value</th></tr></thead><tbody>
+    <tr><td>Format</td><td>GGUF (llama.cpp)</td></tr>
+    <tr><td>Version</td><td>${version}</td></tr>
+    <tr><td>Tensors</td><td>${tensorCount}</td></tr>
+    <tr><td>Metadata entries</td><td>${kvCount}</td></tr>
+    <tr><td>File size</td><td>${fmtSize}</td></tr>
+  </tbody></table>`;
+
+  const metaRows = [];
+  try {
+    const dec = new TextDecoder('utf-8');
+    for (let i=0; i<Math.min(kvCount,30) && pos+12<data.length; i++) {
+      const keyLen = view.getUint32(pos,true); pos+=8;
+      if (keyLen>256||pos+keyLen>data.length) break;
+      const keyStr = dec.decode(data.subarray(pos,pos+keyLen)); pos+=keyLen;
+      if (pos+4>data.length) break;
+      const valType = view.getUint32(pos,true); pos+=4;
+      let valStr='';
+      switch(valType) {
+        case 0: valStr=String(view.getUint8(pos)); pos+=1; break;
+        case 1: valStr=String(view.getInt8(pos)); pos+=1; break;
+        case 2: valStr=String(view.getUint16(pos,true)); pos+=2; break;
+        case 3: valStr=String(view.getInt16(pos,true)); pos+=2; break;
+        case 4: valStr=String(view.getUint32(pos,true)); pos+=4; break;
+        case 5: valStr=String(view.getInt32(pos,true)); pos+=4; break;
+        case 6: valStr=view.getFloat32(pos,true).toPrecision(4); pos+=4; break;
+        case 7: valStr=view.getUint8(pos)?'true':'false'; pos+=1; break;
+        case 8: { const sl=view.getUint32(pos,true); pos+=8; if(sl<=256&&pos+sl<=data.length){valStr=dec.decode(data.subarray(pos,pos+sl));pos+=sl;}else{pos+=sl;valStr='(long)';} break; }
+        case 10: valStr=String(view.getUint32(pos,true)); pos+=8; break;
+        case 11: valStr=String(view.getInt32(pos,true)); pos+=8; break;
+        case 12: valStr=view.getFloat64(pos,true).toPrecision(4); pos+=8; break;
+        default: i=kvCount; break; // array type — stop
+      }
+      if (valStr) metaRows.push([keyStr,valStr]);
+    }
+  } catch(e) {}
+
+  if (metaRows.length > 0) {
+    html += `<div style="margin-top:16px"><strong>Metadata:</strong></div>`;
+    html += `<table class="parquet-table" style="margin-top:8px"><thead><tr><th>Key</th><th>Value</th></tr></thead><tbody>`;
+    for (const [k,v] of metaRows) html += `<tr><td style="font-size:12px">${escapeHtml(k)}</td><td style="font-size:12px">${escapeHtml(v)}</td></tr>`;
+    html += '</tbody></table>';
+  }
+  html += '</div>';
+  return html;
+}
+
+function parseBinaryFallback(data) {
+  const fmtSize = _fmtBytes(data.length);
+  const hexBytes = Array.from(data.slice(0,16)).map(b=>b.toString(16).padStart(2,'0')).join(' ');
+  return `<div class="data-view-header">
+    <span class="data-format-badge">BIN</span>
+    <span class="data-view-stats">${fmtSize}</span>
+  </div><div style="padding:20px">
+    <table class="parquet-table" style="max-width:460px"><thead><tr><th>Property</th><th>Value</th></tr></thead><tbody>
+      <tr><td>Format</td><td>Unknown binary (not ZIP/SafeTensors/GGUF)</td></tr>
+      <tr><td>File size</td><td>${fmtSize}</td></tr>
+      <tr><td>First 16 bytes</td><td><code style="font-size:11px">${escapeHtml(hexBytes)}</code></td></tr>
+    </tbody></table>
+  </div>`;
+}
+
+// Simplified pickle parser for PyTorch state dicts
+function parsePickleStateDict(data) {
+  let i = 0;
+  const stack = [], meta = [], memo = {};
+  let nextMemoId = 0;
+  const dec = new TextDecoder('utf-8');
+  const u8  = () => data[i++];
+  const u16 = () => { const v=data[i]|(data[i+1]<<8); i+=2; return v; };
+  const u32 = () => { const v=data[i]|(data[i+1]<<8)|(data[i+2]<<16)|(data[i+3]*16777216); i+=4; return v>>>0; };
+  const i32 = () => { const v=u32(); return v>=0x80000000?v-4294967296:v; };
+  const fstr = n => { const s=dec.decode(data.subarray(i,i+n)); i+=n; return s; };
+  const line = () => { let e=i; while(e<data.length&&data[e]!==10)e++; const s=dec.decode(data.subarray(i,e)); i=e+1; return s; };
+
+  try {
+    while (i < data.length) {
+      const op = u8();
+      switch(op) {
+        case 0x80: u8(); break; // PROTO
+        case 0x95: i+=8; break; // FRAME
+        case 0x2e: return stack[0]; // STOP
+        case 0x4e: stack.push(null); break; // NONE
+        case 0x88: stack.push(true); break; // NEWTRUE
+        case 0x89: stack.push(false); break; // NEWFALSE
+        case 0x4b: stack.push(u8()); break; // BININT1
+        case 0x4d: stack.push(u16()); break; // BININT2
+        case 0x4a: stack.push(i32()); break; // BININT4
+        case 0x8a: { const n=u8(); let v=0; for(let j=0;j<Math.min(n,6);j++) v+=data[i+j]*Math.pow(256,j); i+=n; stack.push(v); break; } // LONG1
+        case 0x47: { const dv=new DataView(data.buffer,data.byteOffset+i,8); stack.push(dv.getFloat64(0,false)); i+=8; break; } // BINFLOAT
+        case 0x8c: { const n=u8(); stack.push(fstr(n)); break; } // SHORT_BINUNICODE
+        case 0x58: { const n=u32(); if(n<=1<<20){stack.push(fstr(n));}else{stack.push('(long)');i+=n;} break; } // BINUNICODE
+        case 0x8d: { const n=u32(); i+=4; if(n<=1<<20){stack.push(fstr(n));}else{stack.push('(long)');i+=n;} break; } // BINUNICODE8
+        case 0x63: { const m=line(),n=line(); stack.push({__cls__:`${m}.${n}`}); break; } // GLOBAL
+        case 0x93: { const n=stack.pop(),m=stack.pop(); stack.push({__cls__:`${typeof m==='string'?m:'?'}.${typeof n==='string'?n:'?'}`}); break; } // STACK_GLOBAL
+        case 0x28: meta.push(stack.length); break; // MARK
+        case 0x29: stack.push([]); break; // EMPTY_TUPLE
+        case 0x7d: stack.push({}); break; // EMPTY_DICT
+        case 0x5d: stack.push([]); break; // EMPTY_LIST
+        case 0x74: { const m=meta.pop()??0; stack.push(stack.splice(m)); break; } // TUPLE
+        case 0x85: { const a=stack.pop(); stack.push([a]); break; } // TUPLE1
+        case 0x86: { const b=stack.pop(),a=stack.pop(); stack.push([a,b]); break; } // TUPLE2
+        case 0x87: { const c=stack.pop(),b=stack.pop(),a=stack.pop(); stack.push([a,b,c]); break; } // TUPLE3
+        case 0x52: { // REDUCE
+          const args=stack.pop(), func=stack.pop();
+          if (func?.__cls__?.includes('_rebuild_tensor')) {
+            const shape=Array.isArray(args)?args[2]:null;
+            stack.push({__tensor__:true, shape:Array.isArray(shape)?shape.filter(x=>typeof x==='number'):[], storage:Array.isArray(args)?args[0]:null});
+          } else if (func?.__cls__?.includes('_rebuild_parameter')) {
+            const t=Array.isArray(args)?args[0]:null;
+            stack.push(t&&t.__tensor__?t:{__reduced__:func.__cls__,args});
+          } else {
+            stack.push({__reduced__:func?.__cls__,args});
+          }
+          break;
+        }
+        case 0x51: { // BINPERSID
+          const pid=stack.pop();
+          if (Array.isArray(pid)&&pid[0]==='storage') {
+            const st=pid[1], key=pid[2], numel=pid[4];
+            const dtype=st?.__cls__?st.__cls__.split('.').pop().replace('Storage','').replace('Untyped','').toLowerCase():'?';
+            stack.push({__storage__:true,key,dtype,numel:typeof numel==='number'?numel:0});
+          } else stack.push(pid);
+          break;
+        }
+        case 0x50: { line(); stack.push({__persid__:true}); break; } // PERSID (text mode)
+        case 0x71: { const id=u8(); memo[id]=stack[stack.length-1]; break; } // BINPUT
+        case 0x72: { const id=u32(); memo[id]=stack[stack.length-1]; break; } // LONG_BINPUT
+        case 0x94: { memo[nextMemoId++]=stack[stack.length-1]; break; } // MEMOIZE
+        case 0x68: { stack.push(memo[u8()]); break; } // BINGET
+        case 0x6a: { stack.push(memo[u32()]); break; } // LONG_BINGET
+        case 0x73: { const v=stack.pop(),k=stack.pop(),d=stack[stack.length-1]; if(d&&!Array.isArray(d)&&typeof d==='object')d[k]=v; break; } // SETITEM
+        case 0x75: { const m=meta.pop()??0; const items=stack.splice(m); const d=stack[stack.length-1]; if(d&&!Array.isArray(d)&&typeof d==='object') for(let j=0;j<items.length-1;j+=2)d[items[j]]=items[j+1]; break; } // SETITEMS
+        case 0x62: { stack.pop(); break; } // BUILD (simplified — drop state)
+        case 0x61: { const v=stack.pop(); const l=stack[stack.length-1]; if(Array.isArray(l))l.push(v); break; } // APPEND
+        case 0x65: { const m=meta.pop()??0; const items=stack.splice(m); const l=stack[stack.length-1]; if(Array.isArray(l))l.push(...items); break; } // APPENDS
+        case 0x6c: { const m=meta.pop()??0; stack.push(stack.splice(m)); break; } // LIST
+        case 0x64: { const m=meta.pop()??0; const items=stack.splice(m); const d={}; for(let j=0;j<items.length-1;j+=2)d[items[j]]=items[j+1]; stack.push(d); break; } // DICT
+        case 0x81: { const args=stack.pop(),cls=stack.pop(); stack.push({__newobj__:cls,args}); break; } // NEWOBJ
+        case 0x6f: { const m=meta.pop()??0; const items=stack.splice(m); items.shift(); stack.push({__obj__:items}); break; } // OBJ
+        case 0x42: { const n=u32(); i+=n; stack.push(null); break; } // BINBYTES
+        case 0x43: { const n=u8(); i+=n; stack.push(null); break; } // SHORT_BINBYTES
+        case 0x96: { const lo=u32(); i+=4+lo; stack.push(null); break; } // BINBYTES8
+        case 0x30: { stack.pop(); break; } // POP
+        case 0x31: { if(stack.length>0)stack.push(stack[stack.length-1]); break; } // DUP
+        case 0x32: { const m=meta.pop()??0; stack.splice(m); break; } // POP_MARK
+        case 0x49: case 0x4c: case 0x46: { line(); stack.push(0); break; } // INT/LONG/FLOAT (text)
+        case 0x53: case 0x56: { line(); stack.push(''); break; } // STRING/UNICODE (text)
+        default: break;
+      }
+    }
+  } catch(e) { /* partial parse */ }
+  return stack[0];
+}
+
+function extractTensorInfo(obj) {
+  const result = {};
+  function walk(node, prefix) {
+    if (!node || typeof node !== 'object' || Array.isArray(node)) return;
+    for (const [key, val] of Object.entries(node)) {
+      if (typeof key !== 'string') continue;
+      const fullKey = prefix ? `${prefix}.${key}` : key;
+      if (val && typeof val === 'object' && val.__tensor__) {
+        const shape = Array.isArray(val.shape) ? val.shape : [];
+        const storage = val.storage;
+        const dtype = storage?.__storage__ ? normalizePthDtype(storage.dtype) : '';
+        const numel = shape.reduce((a,b) => a*(typeof b==='number'?b:1), shape.length>0?1:0);
+        result[fullKey] = { shape, dtype, numel };
+      } else if (val && typeof val === 'object' && !val.__cls__ &&
+                 !val.__storage__ && !val.__obj__ && !val.__persid__) {
+        walk(val, fullKey);
+      }
+    }
+  }
+  walk(obj, '');
+  return result;
+}
+
+function normalizePthDtype(dtype) {
+  if (!dtype) return '';
+  const m = {float:'float32',half:'float16',double:'float64',int:'int32',long:'int64',
+    short:'int16',byte:'uint8',char:'int8',bool:'bool',bfloat16:'bfloat16',complex:'complex64'};
+  return m[dtype.toLowerCase()] || dtype;
 }
 
 let _hyparquetCache = null;
